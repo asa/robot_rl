@@ -10,6 +10,7 @@ import cli_args
 
 # Environment names
 ENVIRONMENTS = {
+    "lpa_walking_clf": "LPA-walking-clf",  # tinh
     "vanilla": "G1-vanilla-walking",
     "vanilla_ec": "G1-vanilla-walking-ec",
     "lip_clf": "G1-lip-clf",
@@ -32,6 +33,7 @@ ENVIRONMENTS = {
 }
 
 EXPERIMENT_NAMES = {
+    "lpa_walking_clf": "lpa_walking_clf",  # tinh
     "vanilla": "vanilla",
     "vanilla_ec": "vanilla",
     "basic": "baseline",
