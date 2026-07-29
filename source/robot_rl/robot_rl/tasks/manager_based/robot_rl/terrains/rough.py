@@ -248,3 +248,6 @@ STAIR_CFG = TerrainGeneratorCfg(
         # ),
     },
 )
+# tinh: walking_clf/lpa envs import this name; upstream renamed the
+# sloped-rough generator without updating the imports.
+ROUGH_SLOPED_FOR_FLAT_HZD_CFG = ROUGH_SLOPED_FOR_BASIC_LOCOMOTION_CFG

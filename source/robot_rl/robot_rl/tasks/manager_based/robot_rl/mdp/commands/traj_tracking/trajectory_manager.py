@@ -16,7 +16,7 @@ from robot_rl.tasks.manager_based.robot_rl.mdp.commands.traj_tracking.manager_ba
 
 class TrajectoryType(Enum):
     HALF_PERIODIC = "half_periodic"
-    FULL_PERIODIC = "periodic"
+    FULL_PERIODIC = "full_periodic"  # tinh: 2026-07 sets serialize the enum NAME
     EPISODIC = "episodic"
     PERPETUAL = "perpetual"
 
@@ -300,7 +300,16 @@ class TrajectoryManager(ManagerBase):
             # Total time
             total_time=total_time,
             # Conditioning variables
-            conditioner=data['conditioner'],
+            # tinh: 2026-07 sets serialize conditioner as a dict
+            # {terrain, vel_x, vel_y, vel_yaw}; older code expects an
+            # ordered list sorted/searched by vel_x.
+            conditioner=(
+                [data['conditioner']['vel_x'],
+                 data['conditioner'].get('vel_y', 0.0),
+                 data['conditioner'].get('vel_yaw', 0.0)]
+                if isinstance(data['conditioner'], dict)
+                else data['conditioner']
+            ),
             # Reference frames
             reference_frames=ref_frames,
         )
@@ -1119,12 +1128,24 @@ class TrajectoryManager(ManagerBase):
         R = np.zeros((len(output_names), len(output_names)))
         for i, name in enumerate(output_names):
             if name not in R_dict:
-                raise ValueError("No corresponding entry for an output name in relabeling matrix!"
-                                 f"Name: {name}.")
+                # tinh: programmatic entries for LPA-style names
+                # (anatomical world axes: roll/yaw flip under the y=0
+                # reflection, pitch doesn't; frame pos_y and quat
+                # ori_x/ori_z flip). Covers "joint:NAME" and
+                # "FRAME:axis" outputs without hardcoding the robot.
+                if name.startswith("joint:"):
+                    jn = name.split(":", 1)[1]
+                    R_dict[name] = -1 if jn.endswith(("_ROLL", "_YAW")) else 1
+                else:
+                    axis = name.split(":", 1)[1]
+                    R_dict[name] = -1 if axis in ("pos_y", "ori_x", "ori_z") else 1
 
             # Check if there is an associated right/left mirror in the output_names
             # Determine the index of the mirror
             mirror_name = name.replace("right", "TEMP").replace("left", "right").replace("TEMP", "left")
+            if mirror_name == name and ("L_" in name or "R_" in name):
+                # tinh: LPA naming — L_/R_ prefixed segments.
+                mirror_name = name.replace("R_", "TEMP_").replace("L_", "R_").replace("TEMP_", "L_")
 
             if mirror_name in output_names:
                 # Find the index of the mirrored output
