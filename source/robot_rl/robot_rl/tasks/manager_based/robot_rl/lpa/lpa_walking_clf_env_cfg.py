@@ -261,6 +261,18 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
             "yaw": (-0.4, 0.4),
         }
         self.events.base_com.params["asset_cfg"].body_names = ["TORSO_ROLL"]
+        # Base cfg's foot-friction event targets G1 ankle links.
+        self.events.randomize_ground_contact_friction.params[
+            "asset_cfg"].body_names = [".*_ANKLE"]
+
+        # The G1 obs/reward stacks carry two name-bearing terms:
+        # the critic's contact_state sensor and the undesired-contact
+        # penalty's everything-but-feet regex.
+        self.observations.critic.contact_state.params[
+            "sensor_cfg"].body_names = ".*_ANKLE"
+        self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [
+            r"^(?!L_ANKLE$)(?!R_ANKLE$).+$"
+        ]
         self.events.base_com.params["com_range"] = {
             "x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)}
         self.events.base_external_force_torque = None

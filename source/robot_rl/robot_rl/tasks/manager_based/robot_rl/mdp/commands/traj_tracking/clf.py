@@ -101,11 +101,14 @@ class CLF:
             "other_body_ori": [],
             "other_body_ang_vel": [],
         }
+        # tinh: the base body is robot-specific (G1: pelvis_link,
+        # LPA: CORE) — match either prefix into the pelvis subgroups.
+        _BASE_FRAMES = ("pelvis_link", "CORE")
         for i, name in enumerate(ordered_vel_output_names):
-            if name.startswith("pelvis_link:pos_"):
+            if name.startswith(tuple(f"{b}:pos_" for b in _BASE_FRAMES)):
                 pos_key = "pelvis_pos"
                 vel_key = "pelvis_lin_vel"
-            elif name.startswith("pelvis_link:ori_"):
+            elif name.startswith(tuple(f"{b}:ori_" for b in _BASE_FRAMES)):
                 pos_key = "pelvis_ori"
                 vel_key = "pelvis_ang_vel"
             elif name.startswith("joint:"):
