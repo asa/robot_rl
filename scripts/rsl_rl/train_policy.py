@@ -201,6 +201,14 @@ def main():
         if agent_cfg.resume_path or agent_cfg.algorithm.class_name == "Distillation":
             resume_path = agent_cfg.resume_path
             agent_cfg.resume = True
+        elif agent_cfg.resume:
+            # tinh: --resume --load_run <dir> [--checkpoint model_N.pt]
+            # never populated resume_path (UnboundLocalError at load;
+            # hydra rejects agent.resume_path=str overrides because
+            # the cfg types it as None).
+            from isaaclab_tasks.utils import get_checkpoint_path
+            resume_path = get_checkpoint_path(
+                log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
         # Setup video recording if enabled
         if args_cli.video:
