@@ -118,10 +118,10 @@ class LpaWalkingEventsCfg(HumanoidEventsCfg):
                 "conditioner_command_name": "base_velocity",
                 # library tops out at 0.57 m/s — no running traj
                 "special_val": 10.0,
-                # 0.9: spawn most episodes mid-gait ON the moving
-                # reference — continuing to walk becomes the locally
-                # optimal action instead of settling into a shuffle.
-                "rel_envs_on_ref": 0.9,
+                # 0.5: at 0.9 the policy practiced continuing but never the
+                # LAUNCH — the displacement gate starts from rest and
+                # measured 0.18 m/s vs 0.38 m/s during training.
+                "rel_envs_on_ref": 0.5,
                 "joint_add_range": [-0.1, 0.1]}
     )
 
@@ -237,8 +237,10 @@ class LpaWalkingRewardCfg(G1TrajOptCLFRewards):
 
     # The ungameable translation incentive: signed linear forward
     # velocity integrates to net displacement — rocking scores zero.
+    # 10.0 (5.0 reached 0.18 m/s real travel): linear progress can't
+    # be gamed, so it can dominate safely.
     progress = RewTerm(
-        func=mdp.forward_progress, weight=5.0,
+        func=mdp.forward_progress, weight=10.0,
         params={"command_name": "base_velocity"})
 
     # Force actual stepping: the CLF tracking terms are all anchored
