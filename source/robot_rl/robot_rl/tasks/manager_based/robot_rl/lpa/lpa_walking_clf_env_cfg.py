@@ -118,7 +118,10 @@ class LpaWalkingEventsCfg(HumanoidEventsCfg):
                 "conditioner_command_name": "base_velocity",
                 # library tops out at 0.57 m/s — no running traj
                 "special_val": 10.0,
-                "rel_envs_on_ref": 0.5,
+                # 0.9: spawn most episodes mid-gait ON the moving
+                # reference — continuing to walk becomes the locally
+                # optimal action instead of settling into a shuffle.
+                "rel_envs_on_ref": 0.9,
                 "joint_add_range": [-0.1, 0.1]}
     )
 
@@ -219,9 +222,36 @@ class LpaWalkingRewardCfg(G1TrajOptCLFRewards):
         func=mdp.body_ang_vel_reward, weight=1.0,
         params={"command_name": "traj_ref", "sigma": 0.5 * math.sqrt(3)})
 
+    # Weight 3.0 / std 0.25 (was 1.0/0.5): the first trained policy
+    # found the standing optimum — the CLF reference is anchored to
+    # the robot's own stance frame, so standing + gait-rhythm arm
+    # motion tracked 'well' while translating 0.35 m in 12 s. At
+    # std 0.5 standing only cost ~0.5 reward; at 3.0/0.25 it costs
+    # ~2.9 — walking must pay.
+    # Weight 10 (3.0 still shuffled at 0.13 m/s): at 3.0 walking only
+    # gained ~2.5/step over shuffling while the stance-anchored
+    # tracking terms penalize dynamic imperfection more than that.
     xy_vel = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=1.0,
-        params={"command_name": "base_velocity", "std": 0.5})
+        func=mdp.track_lin_vel_xy_exp, weight=10.0,
+        params={"command_name": "base_velocity", "std": 0.25})
+
+    # Force actual stepping: the CLF tracking terms are all anchored
+    # to the robot's own stance frame, so nothing but velocity pays
+    # for translation — weight 3.0 alone got 1.5 m/12 s shuffling.
+    # Air-time reward makes feet LEAVE the ground under a nonzero
+    # command (G1 vanilla recipe, LPA ankle bodies).
+    feet_air_time = RewTerm(
+        func=mdp.feet_air_time_positive_biped,
+        weight=1.0,
+        params={
+            "command_name": "base_velocity",
+            # Desired swing air time: the gait library's half-step
+            # swing is ~0.4 s (T=0.5 s domains).
+            "threshold": 0.4,
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names=".*_ANKLE"),
+        },
+    )
     yaw_vel = RewTerm(
         func=mdp.track_ang_vel_z_exp, weight=1.0,
         params={"command_name": "base_velocity", "std": 0.5})

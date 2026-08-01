@@ -27,7 +27,13 @@ from isaaclab.assets.articulation import ArticulationCfg
 ARMATURE_HEJ_BODY = 0.12   # 140 Nm joints (legs, waist, torso)
 ARMATURE_HEJ_ARM = 0.08    # 62 Nm joints (shoulders, elbows)
 
-NATURAL_FREQ = 10 * 2.0 * 3.1415926535  # 10 Hz, robot_rl convention
+# 5.5 Hz (not G1's 10): LPA's HEJ armature first-guess (0.12) is ~5x
+# G1's biggest actuator, so 10 Hz gives stiffness ~474 Nm/rad and an
+# action scale of 0.037 rad — the first policy tracked the gait's
+# rhythm but couldn't command the stride amplitude (knee/hip swings
+# compressed ~2x, reward plateau 3.3, every episode ending in a fall).
+# 5.5 Hz lands K~143, action scale ~0.12 — the G1 recipe's ballpark.
+NATURAL_FREQ = 5.5 * 2.0 * 3.1415926535
 DAMPING_RATIO = 2.0
 
 STIFFNESS_BODY = ARMATURE_HEJ_BODY * NATURAL_FREQ**2

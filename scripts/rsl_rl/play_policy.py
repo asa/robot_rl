@@ -17,6 +17,8 @@ from train_policy import ENVIRONMENTS, EXPERIMENT_NAMES
 # Experiment names mapping for different environments
 
 SIM_ENVIRONMENTS = {
+    "lpa_walking_clf": "LPA-walking-clf-play",  # tinh
+
     "vanilla": "G1-vanilla-walking",
     "lip_clf": "G1-lip-ref-play",
 
