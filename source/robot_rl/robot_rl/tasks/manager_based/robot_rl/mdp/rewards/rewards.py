@@ -493,3 +493,21 @@ def torque_limits(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntit
 
     # Sum all violations
     return torch.sum(violation, dim=1)
+
+def forward_progress(env, command_name: str,
+                     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """tinh: signed, capped, LINEAR forward-velocity reward.
+
+    Integrates to net displacement along the commanded direction, so
+    in-place rocking averages to ~zero — the exp velocity kernel at
+    high weight taught the LPA to rock at the commanded speed with no
+    travel (reward up, displacement down; tinh-95oj). Backward motion
+    is penalized symmetrically; reward caps at 1 when the command is
+    met (no bonus for overspeed).
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command(command_name)
+    v_x = asset.data.root_lin_vel_b[:, 0]
+    cmd_x = cmd[:, 0]
+    denom = torch.clamp(torch.abs(cmd_x), min=0.1)
+    return torch.clamp(v_x * torch.sign(cmd_x) / denom, -1.0, 1.0)

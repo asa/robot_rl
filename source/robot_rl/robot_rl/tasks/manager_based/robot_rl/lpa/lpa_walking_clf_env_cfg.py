@@ -228,12 +228,18 @@ class LpaWalkingRewardCfg(G1TrajOptCLFRewards):
     # motion tracked 'well' while translating 0.35 m in 12 s. At
     # std 0.5 standing only cost ~0.5 reward; at 3.0/0.25 it costs
     # ~2.9 — walking must pay.
-    # Weight 10 (3.0 still shuffled at 0.13 m/s): at 3.0 walking only
-    # gained ~2.5/step over shuffling while the stance-anchored
-    # tracking terms penalize dynamic imperfection more than that.
+    # exp kernel back to 3.0: at 10.0 the policy exploited the
+    # INSTANTANEOUS kernel by rocking in place at the commanded speed
+    # (reward 231, displacement 0.44 m/12 s). Fine-shaping only.
     xy_vel = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=10.0,
+        func=mdp.track_lin_vel_xy_exp, weight=3.0,
         params={"command_name": "base_velocity", "std": 0.25})
+
+    # The ungameable translation incentive: signed linear forward
+    # velocity integrates to net displacement — rocking scores zero.
+    progress = RewTerm(
+        func=mdp.forward_progress, weight=5.0,
+        params={"command_name": "base_velocity"})
 
     # Force actual stepping: the CLF tracking terms are all anchored
     # to the robot's own stance frame, so nothing but velocity pays
