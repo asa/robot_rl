@@ -448,6 +448,19 @@ def main():
             actions = policy(obs)
             # env stepping
             obs, reward, _, extra = env.step(actions)
+
+            # tinh: follow the CENTROID of all robots (viewer cfg can
+            # only anchor a single env's asset root).
+            if timestep % 5 == 0:
+                try:
+                    _robot = env.unwrapped.scene.articulations["robot"]
+                    _c = _robot.data.root_pos_w.mean(dim=0)
+                    _cx, _cy, _cz = float(_c[0]), float(_c[1]), float(_c[2])
+                    env.unwrapped.sim.set_camera_view(
+                        (_cx + 6.0, _cy + 6.0, _cz + 2.5),
+                        (_cx, _cy, _cz - 0.2))
+                except Exception:
+                    pass
             
             # Log data
             if args_cli.log_data:
