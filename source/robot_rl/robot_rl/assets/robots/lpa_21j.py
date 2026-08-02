@@ -45,7 +45,7 @@ ROBOT_ASSETS = "robot_assets/lpa"
 
 LPA_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"{ROBOT_ASSETS}/lpa_21j/lpa.usd",
+        usd_path=f"{ROBOT_ASSETS}/lpa_21j/lpa_visual.usd",  # tinh-wmor: + render meshes
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
