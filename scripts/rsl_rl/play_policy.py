@@ -449,18 +449,22 @@ def main():
             # env stepping
             obs, reward, _, extra = env.step(actions)
 
-            # tinh: follow the CENTROID of all robots (viewer cfg can
-            # only anchor a single env's asset root).
-            if timestep % 5 == 0:
-                try:
-                    _robot = env.unwrapped.scene.articulations["robot"]
-                    _c = _robot.data.root_pos_w.mean(dim=0)
-                    _cx, _cy, _cz = float(_c[0]), float(_c[1]), float(_c[2])
-                    env.unwrapped.sim.set_camera_view(
-                        (_cx + 6.0, _cy + 6.0, _cz + 2.5),
-                        (_cx, _cy, _cz - 0.2))
-                except Exception:
-                    pass
+            # tinh: follow the robots as a group. MEDIAN (not mean)
+            # so a single episode-reset teleport doesn't yank the
+            # target, EMA-smoothed every step so the camera glides.
+            try:
+                _robot = env.unwrapped.scene.articulations["robot"]
+                _c = _robot.data.root_pos_w.median(dim=0).values
+                _t = (float(_c[0]), float(_c[1]), float(_c[2]))
+                if "_cam" not in dir():
+                    _cam = list(_t)
+                _a = 0.03
+                _cam = [(1 - _a) * o + _a * n for o, n in zip(_cam, _t)]
+                env.unwrapped.sim.set_camera_view(
+                    (_cam[0] + 6.0, _cam[1] + 6.0, _cam[2] + 2.5),
+                    (_cam[0], _cam[1], _cam[2] - 0.2))
+            except Exception:
+                pass
             
             # Log data
             if args_cli.log_data:
