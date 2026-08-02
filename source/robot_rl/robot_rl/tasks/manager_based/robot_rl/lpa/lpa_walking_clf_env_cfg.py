@@ -352,6 +352,14 @@ class LpaWalkingCLFEnvCfg_PLAY(LpaWalkingCLFEnvCfg):
 
         self.scene.num_envs = 2
         self.scene.env_spacing = 2.5
+
+        # Close-up tracking camera for eval videos (follows env_0's
+        # robot root).
+        self.viewer.origin_type = "asset_root"
+        self.viewer.asset_name = "robot"
+        self.viewer.env_index = 0
+        self.viewer.eye = (2.2, 2.2, 1.0)
+        self.viewer.lookat = (0.0, 0.0, 0.7)
         self.observations.policy.enable_corruption = False
         self.scene.terrain.size = (3, 3)
         self.scene.terrain.border_width = 0.0
