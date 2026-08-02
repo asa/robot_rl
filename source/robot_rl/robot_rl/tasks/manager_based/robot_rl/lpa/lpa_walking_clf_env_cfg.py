@@ -57,6 +57,13 @@ for _b in _LPA_BODIES:
 for _j in _LPA_JOINTS:
     WALKING_Q_weights[f"joint:{_j}"] = [1.0, 1.0]
     WALKING_R_weights[f"joint:{_j}"] = [0.05]
+# Shoulder roll/yaw 4x: the first walker pumped its shoulders
+# vertically for momentum regulation instead of tracking the
+# reference's pitch counter-swing (user viewer note 2026-08-02).
+# Pitch stays at 1.0 — that's the DOF that SHOULD swing.
+for _j in ("L_SHOULDER_ROLL", "R_SHOULDER_ROLL",
+           "L_SHOULDER_YAW", "R_SHOULDER_YAW"):
+    WALKING_Q_weights[f"joint:{_j}"] = [4.0, 4.0]
 
 
 ##
