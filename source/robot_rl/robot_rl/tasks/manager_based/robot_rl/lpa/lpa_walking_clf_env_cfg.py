@@ -255,9 +255,23 @@ class LpaWalkingRewardCfg(G1TrajOptCLFRewards):
     # for translation — weight 3.0 alone got 1.5 m/12 s shuffling.
     # Air-time reward makes feet LEAVE the ground under a nonzero
     # command (G1 vanilla recipe, LPA ankle bodies).
+    # Anti-drag round (user: 'one foot dragged behind the other'):
+    # feet_slide penalizes foot velocity WHILE in contact — dragging
+    # is sliding contact by definition; air time doubled so both
+    # feet must actually swing.
+    feet_slide = RewTerm(
+        func=mdp.feet_slide,
+        weight=-0.25,
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names=".*_ANKLE"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ANKLE"),
+        },
+    )
+
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_positive_biped,
-        weight=1.0,
+        weight=2.0,
         params={
             "command_name": "base_velocity",
             # Desired swing air time: the gait library's half-step
