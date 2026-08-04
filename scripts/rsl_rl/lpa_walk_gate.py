@@ -30,6 +30,10 @@ from rsl_rl.runners import OnPolicyRunner
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 
 env_cfg = parse_env_cfg("LPA-walking-clf-play", device="cuda:0", num_envs=1)
+# Pin the command to the gated speed — the play cfg samples
+# lin_vel_x in (0.38, 0.57), so without this the bar is compared
+# against a speed the policy was never asked for.
+env_cfg.commands.base_velocity.ranges.lin_vel_x = (args.cmd_vx, args.cmd_vx)
 env = gym.make("LPA-walking-clf-play", cfg=env_cfg)
 env = RslRlVecEnvWrapper(env)
 run = sorted(glob.glob(args.run_glob))[-1]
