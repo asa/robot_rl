@@ -4,7 +4,7 @@
 #   - robot: LPA_MINIMAL_CFG (21 joints, HEJ actuators, stand init)
 #   - reference: OUR trajopt gait library (walk_stack solutions
 #     exported by tinh's export_clfrl_library — 3 speeds, vel_x
-#     0.38-0.74, 5 gaits), local path, no HF fetch
+#     0.27-0.74, 7 gaits), local path, no HF fetch
 #   - outputs: joints + CORE/L_ANKLE/R_ANKLE bodies (LPA has no
 #     wrists in the walking model, no ankle roll, and no com outputs
 #     in the library — use_com stays False)
@@ -88,8 +88,8 @@ class LpaGaitLibraryCommandsCfg(HumanoidCommandsCfg):
         R_weights=WALKING_R_weights,
         hold_phi_threshold=0.1,
         # No sideways/turning heuristic: the library is forward-only
-        # (vel_x 0.38-0.74, fastwalk gaits x030@t040/t036 added
-        # 2026-08-03), lateral/yaw commands are zeroed below.
+        # (vel_x 0.27-0.74; fastwalk x030@t040/t036 2026-08-03,
+        # slowwalk x022@t060/t070 2026-08-04), lateral/yaw zeroed below.
         heuristic_func=None,
         phasing_boundaries=4,
     )
@@ -103,7 +103,7 @@ class LpaGaitLibraryCommandsCfg(HumanoidCommandsCfg):
         rel_open_loop=0.2,
         debug_vis=True,
         ranges=VelocityTrackingCommandCfg.VelRanges(
-            lin_vel_x=(0.38, 0.73),
+            lin_vel_x=(0.28, 0.73),
             lin_vel_y=(0.0, 0.0),
             ang_vel_z=(0.0, 0.0),
             heading=(-math.pi, math.pi),
@@ -306,7 +306,7 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot")
 
         # Forward-only, inside the library's conditioner span.
-        self.commands.base_velocity.ranges.lin_vel_x = (0.38, 0.73)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.28, 0.73)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (-3.14, 3.14)
