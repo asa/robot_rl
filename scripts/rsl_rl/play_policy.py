@@ -134,6 +134,14 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--speed_spread",
+        action="store_true",
+        default=False,
+        help="Give each env a distinct forward speed command, evenly "
+             "spaced over the cfg's lin_vel_x range (env 0 slowest).",
+    )
+
+    parser.add_argument(
         "--play_log_dir",
         type=str,
         default = None,
@@ -276,6 +284,11 @@ def main():
         env_cfg.commands.base_velocity.ranges.lin_vel_x = (args_cli.sim_speed[0], args_cli.sim_speed[0])
         env_cfg.commands.base_velocity.ranges.lin_vel_y = (args_cli.sim_speed[1], args_cli.sim_speed[1])
         env_cfg.commands.base_velocity.ranges.ang_vel_z = (args_cli.sim_speed[2], args_cli.sim_speed[2])
+
+    if args_cli.speed_spread:
+        # One distinct command per env (linspace over the cfg range);
+        # stretch resampling so a mid-video redraw never scrambles it.
+        env_cfg.commands.base_velocity.resampling_time_range = (1.0e6, 1.0e6)
 
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
     print("[DEBUG] Configurations parsed")
@@ -438,6 +451,24 @@ def main():
     timestep = 0
     print("[DEBUG] Starting simulation loop")
 
+    spread_vx = None
+    if args_cli.speed_spread:
+        _term = env.unwrapped.command_manager.get_term("base_velocity")
+        _lo, _hi = _term.cfg.ranges.lin_vel_x
+        spread_vx = torch.linspace(
+            _lo, _hi, env.unwrapped.num_envs, device=env.unwrapped.device)
+        print(f"[DEBUG] speed spread: {[round(float(v), 3) for v in spread_vx]}")
+
+    def _apply_spread():
+        # After every step (and after resets) so reset resampling
+        # never scrambles the per-env speeds the video is showing.
+        term = env.unwrapped.command_manager.get_term("base_velocity")
+        term.vel_command_b[:, 0] = spread_vx
+        term.vel_command_b[:, 1:] = 0.0
+
+    if spread_vx is not None:
+        _apply_spread()
+
     obs = env.get_observations()
     # simulate environment
     while simulation_app.is_running():
@@ -448,6 +479,9 @@ def main():
             actions = policy(obs)
             # env stepping
             obs, reward, _, extra = env.step(actions)
+
+            if spread_vx is not None:
+                _apply_spread()
 
             # tinh: follow the robots as a group. MEDIAN (not mean)
             # so a single episode-reset teleport doesn't yank the
