@@ -881,7 +881,10 @@ class TrajectoryCommand(CommandTerm):
         self.metrics["vdot_time"] = self.vdot_time
 
         # Log per-reference tracking
-        v_mean = self.manager.get_v_log_avg().squeeze(-1)
+        # reshape(-1), not squeeze(-1): a single-trajectory library
+        # (stomp) yields shape [1] and squeeze collapses it to 0-d,
+        # crashing len() below.
+        v_mean = self.manager.get_v_log_avg().reshape(-1)
         for i in range(len(v_mean)):
             # Use repeat() instead of expand() to create a contiguous tensor that
             # can be safely modified in-place by the command manager
