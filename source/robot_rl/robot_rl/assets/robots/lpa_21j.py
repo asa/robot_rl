@@ -102,9 +102,31 @@ LPA_CFG = ArticulationCfg(
             joint_names_expr=[
                 ".*_HIP_PITCH", ".*_HIP_ROLL", ".*_HIP_YAW",
                 ".*_KNEE", ".*_ANKLE",
-                "WAIST_YAW", "TORSO_PITCH", "TORSO_ROLL",
+                "WAIST_YAW",
             ],
             effort_limit_sim=140.0,
+            velocity_limit_sim=10.4,
+            stiffness=STIFFNESS_BODY,
+            damping=DAMPING_BODY,
+            armature=ARMATURE_HEJ_BODY,
+        ),
+        # SONAX 4-bar torso (tinh-lpa-clfrl.5.6): TORSO_PITCH/ROLL are
+        # driven by two HEJ90 cams through crank+rod push-rods onto the
+        # U-joint plate. Joint-space capacity is pose-dependent and
+        # ASYMMETRIC (closure-solved from CAD, sonax_linkage.py):
+        # pitch 233-269 Nm over the ROM (rods in phase), roll
+        # 96-138 Nm (differential). Flat MIN-over-ROM bounds here.
+        "sonax_pitch": ImplicitActuatorCfg(
+            joint_names_expr=["TORSO_PITCH"],
+            effort_limit_sim=233.0,
+            velocity_limit_sim=10.4,
+            stiffness=STIFFNESS_BODY,
+            damping=DAMPING_BODY,
+            armature=ARMATURE_HEJ_BODY,
+        ),
+        "sonax_roll": ImplicitActuatorCfg(
+            joint_names_expr=["TORSO_ROLL"],
+            effort_limit_sim=96.0,
             velocity_limit_sim=10.4,
             stiffness=STIFFNESS_BODY,
             damping=DAMPING_BODY,
