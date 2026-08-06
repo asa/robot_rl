@@ -4,7 +4,7 @@
 #   - robot: LPA_MINIMAL_CFG (21 joints, HEJ actuators, stand init)
 #   - reference: OUR trajopt gait library (walk_stack solutions
 #     exported by tinh's export_clfrl_library — 3 speeds, vel_x
-#     STOMP gait only — 4-domain step+dwell, vel 0.25), local path
+#     PENDULUM STOMP keeper — 4-domain, vel 0.5585), local path
 #   - outputs: joints + CORE/L_ANKLE/R_ANKLE bodies (LPA has no
 #     wrists in the walking model, no ankle roll, and no com outputs
 #     in the library — use_com stays False)
@@ -88,8 +88,10 @@ class LpaGaitLibraryCommandsCfg(HumanoidCommandsCfg):
         R_weights=WALKING_R_weights,
         hold_phi_threshold=0.1,
         # No sideways/turning heuristic: the library is forward-only
-        # STOMP LIBRARY (tinh-lpa-clfrl.5, overrides all walks): one
-        # 4-domain gait (step 0.5s + DS dwell 0.32s), vel_x 0.2513.
+        # PENDULUM STOMP keeper (tinh-lpa-clfrl.5, user-approved
+        # 2026-08-05): 4-domain, 0.44 stride, apex vault over the
+        # ankle, brief momentum dwell, elbow secondary motion,
+        # TRUE SONAX limits. vel_x 0.5585.
         heuristic_func=None,
         phasing_boundaries=4,
     )
@@ -103,7 +105,7 @@ class LpaGaitLibraryCommandsCfg(HumanoidCommandsCfg):
         rel_open_loop=0.2,
         debug_vis=True,
         ranges=VelocityTrackingCommandCfg.VelRanges(
-            lin_vel_x=(0.24, 0.26),
+            lin_vel_x=(0.54, 0.58),
             lin_vel_y=(0.0, 0.0),
             ang_vel_z=(0.0, 0.0),
             heading=(-math.pi, math.pi),
@@ -306,7 +308,7 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot")
 
         # Forward-only, inside the library's conditioner span.
-        self.commands.base_velocity.ranges.lin_vel_x = (0.24, 0.26)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.54, 0.58)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (-3.14, 3.14)
