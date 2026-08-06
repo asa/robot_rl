@@ -91,7 +91,8 @@ class LpaGaitLibraryCommandsCfg(HumanoidCommandsCfg):
         # PENDULUM STOMP keeper (tinh-lpa-clfrl.5, user-approved
         # 2026-08-05): 4-domain, 0.44 stride, apex vault over the
         # ankle, brief momentum dwell, elbow secondary motion,
-        # TRUE SONAX limits. vel_x 0.5585.
+        # TRUE SONAX limits + chest counter-roll, synced punch,
+        # feet-track-x, ankle flip. vel_x 0.5964.
         heuristic_func=None,
         phasing_boundaries=4,
     )
@@ -105,7 +106,7 @@ class LpaGaitLibraryCommandsCfg(HumanoidCommandsCfg):
         rel_open_loop=0.2,
         debug_vis=True,
         ranges=VelocityTrackingCommandCfg.VelRanges(
-            lin_vel_x=(0.54, 0.58),
+            lin_vel_x=(0.58, 0.62),
             lin_vel_y=(0.0, 0.0),
             ang_vel_z=(0.0, 0.0),
             heading=(-math.pi, math.pi),
@@ -308,7 +309,7 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot")
 
         # Forward-only, inside the library's conditioner span.
-        self.commands.base_velocity.ranges.lin_vel_x = (0.54, 0.58)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.58, 0.62)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (-3.14, 3.14)
