@@ -64,6 +64,13 @@ for _j in _LPA_JOINTS:
 for _j in ("L_SHOULDER_ROLL", "R_SHOULDER_ROLL",
            "L_SHOULDER_YAW", "R_SHOULDER_YAW"):
     WALKING_Q_weights[f"joint:{_j}"] = [4.0, 4.0]
+# STYLE CHANNELS 4x (user viewer note 2026-08-06: the trained policy
+# washed out the dwell, chest counter-roll, and ankle flip): the
+# choreography lives in TORSO_ROLL (SONAX counter-roll) and the
+# ankles (toe-off/heel-strike) — default weight let the policy
+# sacrifice them first.
+for _j in ("TORSO_ROLL", "L_ANKLE", "R_ANKLE"):
+    WALKING_Q_weights[f"joint:{_j}"] = [4.0, 4.0]
 
 
 ##
@@ -242,9 +249,15 @@ class LpaWalkingRewardCfg(G1TrajOptCLFRewards):
     # exp kernel back to 3.0: at 10.0 the policy exploited the
     # INSTANTANEOUS kernel by rocking in place at the commanded speed
     # (reward 231, displacement 0.44 m/12 s). Fine-shaping only.
+    # Weight 3.0/std 0.25 actively ERASED the stomp dwell: a constant
+    # velocity command tracked tightly pays the policy to smooth out
+    # the reference's stop-and-go rhythm (user viewer note
+    # 2026-08-06). Softened to an average-speed anchor; the CLF
+    # tracking carries the within-cycle rhythm and forward_progress
+    # (integral) is profile-indifferent.
     xy_vel = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=3.0,
-        params={"command_name": "base_velocity", "std": 0.25})
+        func=mdp.track_lin_vel_xy_exp, weight=1.0,
+        params={"command_name": "base_velocity", "std": 0.45})
 
     # The ungameable translation incentive: signed linear forward
     # velocity integrates to net displacement — rocking scores zero.
