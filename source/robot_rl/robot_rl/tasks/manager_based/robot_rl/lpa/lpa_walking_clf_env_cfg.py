@@ -64,13 +64,24 @@ for _j in _LPA_JOINTS:
 for _j in ("L_SHOULDER_ROLL", "R_SHOULDER_ROLL",
            "L_SHOULDER_YAW", "R_SHOULDER_YAW"):
     WALKING_Q_weights[f"joint:{_j}"] = [4.0, 4.0]
-# STYLE CHANNELS 4x (user viewer note 2026-08-06: the trained policy
-# washed out the dwell, chest counter-roll, and ankle flip): the
-# choreography lives in TORSO_ROLL (SONAX counter-roll) and the
-# ankles (toe-off/heel-strike) — default weight let the policy
-# sacrifice them first.
-for _j in ("TORSO_ROLL", "L_ANKLE", "R_ANKLE"):
-    WALKING_Q_weights[f"joint:{_j}"] = [4.0, 4.0]
+# STYLE CHANNELS (user viewer notes 2026-08-06/07): each washed-out
+# aspect has a precise output channel. Weights are [position,
+# velocity] against the phase-indexed reference.
+#
+# THE DWELL lives in CORE:pos_x — the base's forward profile vs phase
+# (hold through double support, advance through the swing); its
+# velocity slot rewards the stop-go rhythm itself. The vault/dip live
+# in CORE:pos_z.
+WALKING_Q_weights["CORE:pos_x"] = [6.0, 6.0]
+WALKING_Q_weights["CORE:pos_z"] = [4.0, 2.0]
+# CHEST UPRIGHT = base roll + TORSO_ROLL. Upweighting only the joint
+# (round 1) let the policy roll the PELVIS off-reference instead —
+# both sides of the sum now carry weight.
+WALKING_Q_weights["CORE:ori_x"] = [8.0, 4.0]
+WALKING_Q_weights["joint:TORSO_ROLL"] = [8.0, 4.0]
+# ANKLE FLIP is a velocity-shaped event (toe-off/heel-strike snaps).
+for _j in ("L_ANKLE", "R_ANKLE"):
+    WALKING_Q_weights[f"joint:{_j}"] = [4.0, 8.0]
 
 
 ##
