@@ -494,6 +494,29 @@ def torque_limits(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntit
     # Sum all violations
     return torch.sum(violation, dim=1)
 
+def body_upright_roll(env,
+                      asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+                      ) -> torch.Tensor:
+    """tinh: L2 penalty on a BODY's world roll tilt (gravity's lateral
+    component in the body frame).
+
+    The chest-upright ask is a SUM (base roll + TORSO_ROLL): weighting
+    the two CLF channels separately let the policy park the PELVIS
+    level and swing the chest anti-phase with the tracked joint
+    (user viewer note 2026-08-07). Penalizing the summed quantity is
+    assignment-free: pelvis and SONAX split the roll however dynamics
+    prefer, as long as the chest stays level. Pitch is left free.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    body_id = asset_cfg.body_ids[0]
+    quat = asset.data.body_quat_w[:, body_id]
+    # gravity direction in body frame; y-component = roll tilt
+    g_w = torch.tensor([0.0, 0.0, -1.0], device=quat.device).expand(
+        quat.shape[0], 3)
+    g_b = quat_rotate_inverse(quat, g_w)
+    return torch.square(g_b[:, 1])
+
+
 def forward_progress(env, command_name: str,
                      asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """tinh: signed, capped, LINEAR forward-velocity reward.

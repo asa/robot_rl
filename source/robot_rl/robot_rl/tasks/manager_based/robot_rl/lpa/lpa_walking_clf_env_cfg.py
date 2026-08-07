@@ -77,8 +77,12 @@ WALKING_Q_weights["CORE:pos_z"] = [4.0, 2.0]
 # CHEST UPRIGHT = base roll + TORSO_ROLL. Upweighting only the joint
 # (round 1) let the policy roll the PELVIS off-reference instead —
 # both sides of the sum now carry weight.
-WALKING_Q_weights["CORE:ori_x"] = [8.0, 4.0]
-WALKING_Q_weights["joint:TORSO_ROLL"] = [8.0, 4.0]
+# Round 3 (user 2026-08-07): [8,4] on BOTH roll components let the
+# policy park the PELVIS level and swing the chest anti-phase with
+# the tracked joint — the upright ask is the SUM, now rewarded
+# directly (chest_upright below). Component weights back to mild.
+WALKING_Q_weights["CORE:ori_x"] = [2.0, 2.0]
+WALKING_Q_weights["joint:TORSO_ROLL"] = [4.0, 2.0]
 # ANKLE FLIP is a velocity-shaped event (toe-off/heel-strike snaps).
 for _j in ("L_ANKLE", "R_ANKLE"):
     WALKING_Q_weights[f"joint:{_j}"] = [4.0, 8.0]
@@ -266,6 +270,13 @@ class LpaWalkingRewardCfg(G1TrajOptCLFRewards):
     # 2026-08-06). Softened to an average-speed anchor; the CLF
     # tracking carries the within-cycle rhythm and forward_progress
     # (integral) is profile-indifferent.
+    # Chest stays LEVEL regardless of how pelvis/SONAX split the roll
+    # (assignment-free sum penalty; see mdp.body_upright_roll).
+    chest_upright = RewTerm(
+        func=mdp.body_upright_roll, weight=-8.0,
+        params={"asset_cfg": SceneEntityCfg(
+            "robot", body_names=["TORSO_ROLL"])})
+
     xy_vel = RewTerm(
         func=mdp.track_lin_vel_xy_exp, weight=1.0,
         params={"command_name": "base_velocity", "std": 0.45})
