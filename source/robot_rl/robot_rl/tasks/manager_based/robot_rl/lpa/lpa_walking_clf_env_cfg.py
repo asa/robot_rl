@@ -72,7 +72,9 @@ for _j in ("L_SHOULDER_ROLL", "R_SHOULDER_ROLL",
 # (hold through double support, advance through the swing); its
 # velocity slot rewards the stop-go rhythm itself. The vault/dip live
 # in CORE:pos_z.
-WALKING_Q_weights["CORE:pos_x"] = [6.0, 6.0]
+# [6,6] -> [10,10] (user 2026-08-07: RL still compresses the dwell;
+# the reference's is right — track it harder).
+WALKING_Q_weights["CORE:pos_x"] = [10.0, 10.0]
 WALKING_Q_weights["CORE:pos_z"] = [4.0, 2.0]
 # CHEST UPRIGHT = base roll + TORSO_ROLL. Upweighting only the joint
 # (round 1) let the policy roll the PELVIS off-reference instead —
