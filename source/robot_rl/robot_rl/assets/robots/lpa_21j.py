@@ -20,7 +20,7 @@
 #     robot_assets/lpa/ (regenerate after any URDF change)
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.actuators import DCMotorCfg, ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 # HEJ first guesses (armature, viscous damping) keyed by class.
@@ -96,16 +96,25 @@ LPA_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     actuators={
-        # Single HEJ family per class: all body joints share the
-        # 140 Nm actuator, all arm joints the 62 Nm one.
-        "body": ImplicitActuatorCfg(
+        # Single HEJ family per class. Body = HEJ 90 with the
+        # MAXON-PROVIDED torque-speed envelope (vendor 2026-08-09,
+        # tinh-lpa-clfrl.6.4): DCMotor four-quadrant curve —
+        # saturation 294 Nm at zero speed (140 rpm / 0.4762 rpm/Nm),
+        # no-load 14.661 rad/s (140 rpm), continuous clip 128 Nm.
+        # The vendor's mild 0.0405 Nm/rpm derate of the flat region
+        # is not representable in the 3-param model (<=2.5%
+        # optimistic mid-band; the MuJoCo gate carries the exact
+        # envelope). Old flat 140/10.4 was peak-torque + conservative
+        # speed.
+        "body": DCMotorCfg(
             joint_names_expr=[
                 ".*_HIP_PITCH", ".*_HIP_ROLL", ".*_HIP_YAW",
                 ".*_KNEE", ".*_ANKLE",
                 "WAIST_YAW",
             ],
-            effort_limit_sim=140.0,
-            velocity_limit_sim=10.4,
+            effort_limit=128.0,
+            saturation_effort=294.0,
+            velocity_limit=14.661,
             stiffness=STIFFNESS_BODY,
             damping=DAMPING_BODY,
             armature=ARMATURE_HEJ_BODY,
@@ -132,13 +141,17 @@ LPA_CFG = ArticulationCfg(
             damping=DAMPING_BODY,
             armature=ARMATURE_HEJ_BODY,
         ),
-        "arms": ImplicitActuatorCfg(
+        # Arms = HEJ 70: DERIVED placeholder envelope (same shape
+        # ratios as the vendor HEJ 90 — saturation 2.30x continuous;
+        # UNVERIFIED, awaiting maxon numbers, tinh-lpa-clfrl.6.1).
+        "arms": DCMotorCfg(
             joint_names_expr=[
                 ".*_SHOULDER_PITCH", ".*_SHOULDER_ROLL",
                 ".*_SHOULDER_YAW", ".*_ELBOW",
             ],
-            effort_limit_sim=62.0,
-            velocity_limit_sim=17.8,
+            effort_limit=62.0,
+            saturation_effort=142.6,
+            velocity_limit=17.8,
             stiffness=STIFFNESS_ARM,
             damping=DAMPING_ARM,
             armature=ARMATURE_HEJ_ARM,
