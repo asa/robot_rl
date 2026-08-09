@@ -116,7 +116,7 @@ class LpaGaitLibraryCommandsCfg(HumanoidCommandsCfg):
         # 2026-08-05): 4-domain, 0.44 stride, apex vault over the
         # ankle, brief momentum dwell, elbow secondary motion,
         # TRUE SONAX limits + chest counter-roll, synced punch,
-        # feet-track-x, ankle flip. vel_x 0.5431 (pendulum6: hanging arms, wrist clearance).
+        # feet-track-x, ankle flip. vel_x 0.5612 (pendulum7: +torso lean 0.10, stomp nod).
         heuristic_func=None,
         phasing_boundaries=4,
     )
@@ -130,10 +130,10 @@ class LpaGaitLibraryCommandsCfg(HumanoidCommandsCfg):
         rel_open_loop=0.2,
         debug_vis=True,
         ranges=VelocityTrackingCommandCfg.VelRanges(
-            # Centered on the pendulum6 library's natural vel_x
-            # 0.5431 (dwell grew 0.27 -> 0.34 s): commanding the
-            # old 0.60 would pay the policy to compress the dwell.
-            lin_vel_x=(0.52, 0.56),
+            # Centered on the library's natural vel_x — commanding
+            # faster pays the policy to compress the dwell.
+            # pendulum7 (lean+nod, dwell 0.315 s): vel_x 0.5612.
+            lin_vel_x=(0.54, 0.58),
             lin_vel_y=(0.0, 0.0),
             ang_vel_z=(0.0, 0.0),
             heading=(-math.pi, math.pi),
@@ -349,7 +349,7 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot")
 
         # Forward-only, inside the library's conditioner span.
-        self.commands.base_velocity.ranges.lin_vel_x = (0.52, 0.56)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.54, 0.58)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (-3.14, 3.14)
