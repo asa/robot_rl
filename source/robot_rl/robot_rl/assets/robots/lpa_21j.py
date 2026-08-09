@@ -162,7 +162,10 @@ LPA_CFG = ArticulationCfg(
 
 LPA_ACTION_SCALE = {}
 for _a in LPA_CFG.actuators.values():
-    _e = _a.effort_limit_sim
+    # Implicit actuators carry effort_limit_sim; explicit (DCMotor)
+    # carry effort_limit (the continuous clip) instead.
+    _e = (_a.effort_limit_sim if _a.effort_limit_sim is not None
+          else _a.effort_limit)
     _s = _a.stiffness
     for _n in _a.joint_names_expr:
         LPA_ACTION_SCALE[_n] = 0.125 * _e / _s
