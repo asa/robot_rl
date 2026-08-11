@@ -13,14 +13,40 @@ verifies the selection semantics:
   .venv/bin/python scripts/test_multiskill_library.py <library_dir>
 """
 
+import importlib.util
 import sys
+import types
 
 import torch
 
-sys.path.insert(0, "source/robot_rl")
-from robot_rl.tasks.manager_based.robot_rl.mdp.commands.traj_tracking.library_manager import (  # noqa: E402
-    LibraryManager,
-)
+# Load the traj_tracking modules WITHOUT the robot_rl package
+# __init__ chain (which boots the Isaac kit — heavyweight and
+# EULA-gated on the training box). Register stub packages so the
+# modules' absolute/relative imports resolve.
+_PKG = "robot_rl.tasks.manager_based.robot_rl.mdp.commands.traj_tracking"
+_DIR = "source/robot_rl/robot_rl/tasks/manager_based/robot_rl/mdp/commands/traj_tracking"
+
+parts = _PKG.split(".")
+for i in range(len(parts)):
+    name = ".".join(parts[: i + 1])
+    if name not in sys.modules:
+        mod = types.ModuleType(name)
+        mod.__path__ = []
+        sys.modules[name] = mod
+sys.modules[_PKG].__path__ = [_DIR]
+
+def _load(mod_name: str):
+    full = f"{_PKG}.{mod_name}"
+    spec = importlib.util.spec_from_file_location(
+        full, f"{_DIR}/{mod_name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[full] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+_load("manager_base")
+_load("trajectory_manager")
+LibraryManager = _load("library_manager").LibraryManager
 
 def main() -> int:
     folder = sys.argv[1]
