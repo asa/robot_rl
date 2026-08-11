@@ -173,7 +173,14 @@ class TrajectoryCommand(CommandTerm):
         # Determine which envs should hold
         cmd_vel = self.env.command_manager.get_command("base_velocity")
         prev_should_hold = self.should_hold.clone()
-        self.should_hold = torch.abs(cmd_vel[:, 0]) < self.cfg.hold_phi_threshold
+        # Hold keys on the FULL command magnitude, not vx alone: a
+        # turn-in-place command (vx=0, wz!=0) must keep phasing its
+        # turning gait — the vx-only test froze/wrapped the turn
+        # reference every ~1 s and the discontinuities NaN'd
+        # pendulum9 (tinh-lpa-clfrl.7.7).
+        cmd_mag = torch.sqrt(cmd_vel[:, 0] ** 2 + cmd_vel[:, 1] ** 2
+                             + cmd_vel[:, 2] ** 2)
+        self.should_hold = cmd_mag < self.cfg.hold_phi_threshold
 
         # Reset tracking on newly holding envs or episode resets
         newly_holding = self.should_hold & ~prev_should_hold
