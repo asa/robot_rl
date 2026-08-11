@@ -118,6 +118,8 @@ def main() -> int:
     cmd.active_ref_id = torch.full((N,), -1, dtype=torch.long)
     cmd.pending_ref_id = torch.full((N,), -2, dtype=torch.long)
     cmd.ref_start_time = torch.zeros(N)
+    cmd.pending_entry_time = torch.zeros(N)
+    cmd.pending_exit_phase = torch.full((N,), -1.0)
 
     lib = cmd.manager
     names = lib.ref_names
@@ -137,9 +139,12 @@ def main() -> int:
         # The supervisory sequence a game/curriculum layer would run —
         # the full graph walk: every switch travels a solved EDGE
         # (walk->stand, stand->laser-brace, brace->stand, stand->walk).
-        if k == 150:                    # 3 s of walking -> stop
+        if k == 150:                    # 3 s of walking -> stop:
+            # walk_to_stand splices at the cycle dwell (DS node 4:
+            # (0.45 + 0.315*4/8) / 1.5307 ~ phi 0.397) — fire on the
+            # phase crossing, not the hold lock.
             vel.command[:] = torch.tensor([[0.0, 0.0, 0.0]])
-            cmd.set_next_ref(torch.tensor([0]), w2s)   # fires at hold
+            cmd.set_next_ref(torch.tensor([0]), w2s, exit_phase=0.397)
         if k == 400:                    # queued during the stand hold
             cmd.set_next_ref(torch.tensor([0]), ei)
         if k == 650:                    # queued while enter still playing
@@ -147,7 +152,9 @@ def main() -> int:
         if k == 900:
             cmd.set_next_ref(torch.tensor([0]), s2w)
         if k == 1000:
-            cmd.set_next_ref(torch.tensor([0]), -1)
+            # stand_to_walk lands at the cycle TOUCHDOWN (SS end,
+            # 0.45 s in) — enter locomotion mid-cycle.
+            cmd.set_next_ref(torch.tensor([0]), -1, entry_time=0.45)
             vel.command[:] = torch.tensor([[0.56, 0.0, 0.0]])
 
     phi_log = []
@@ -207,11 +214,13 @@ def main() -> int:
     for hk, _ in events[:4]:
         phi_after = [p for kk, p, a, _ in phi_log if kk == hk][0]
         assert phi_after < 0.1, (hk, phi_after)
-    # 6. no teleports: continuous steps stay walking-scale; handoff
-    #    seams small (every switch travels a solved edge / shared
-    #    stand fixture)
+    # 6. no teleports: continuous steps stay walking-scale (the stomp
+    #    swing peaks ~0.26 rad/step at 50 Hz — matches the USD frame
+    #    deltas; the episodic-wrap bug this guards against was 0.55);
+    #    handoff seams small (every switch travels a solved edge and
+    #    fires at its designed splice phase)
     max_step_jump = top_jumps[0][0] if top_jumps else 0.0
-    assert max_step_jump < 0.12, top_jumps
+    assert max_step_jump < 0.30, top_jumps
     assert all(j < 0.15 for j in handoff_jumps), handoff_jumps
 
     print("HANDOFF SEQUENCE GATE: PASS")

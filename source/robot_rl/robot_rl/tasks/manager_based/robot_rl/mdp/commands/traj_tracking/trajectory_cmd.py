@@ -151,6 +151,15 @@ class TrajectoryCommand(CommandTerm):
         self.pending_ref_id = torch.full((self.num_envs,), self._NO_PENDING,
                                          dtype=torch.long, device=self.device)
         self.ref_start_time = torch.zeros(self.num_envs, device=self.device)
+        # Splice alignment (the solve-side iron rule at runtime):
+        # entry_time starts the TARGET mid-reference (stand_to_walk
+        # lands at the cycle's touchdown, not phi=0); exit_phase fires
+        # the switch when the SOURCE's unmasked phase crosses the
+        # segment's designed splice point (walk_to_stand enters at
+        # the dwell, not at the phase-hold lock).
+        self.pending_entry_time = torch.zeros(self.num_envs, device=self.device)
+        self.pending_exit_phase = torch.full((self.num_envs,), -1.0,
+                                             device=self.device)
 
         # State for phasing variable hold logic (hold at second boundary, not first)
         self.should_hold = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
@@ -832,13 +841,28 @@ class TrajectoryCommand(CommandTerm):
     def command(self):
         return self.y_des
 
-    def set_next_ref(self, env_ids: torch.Tensor, ref_ids: torch.Tensor | int):
+    def set_next_ref(self, env_ids: torch.Tensor, ref_ids: torch.Tensor | int,
+                     entry_time: float = 0.0,
+                     exit_phase: float | None = None):
         """Queue a reference switch (8.5c). ref_ids: trajectory index
         into the library's ref_names, or -1 to return to velocity-
-        conditioned locomotion. Fires at the next hold point."""
+        conditioned locomotion.
+
+        entry_time: start the TARGET this many seconds into itself
+            (e.g. locomotion after stand_to_walk enters at the
+            cycle's touchdown, 0.45 s — the segment's exported
+            splice point, not phi = 0).
+        exit_phase: fire when the SOURCE's unmasked phase crosses
+            this value (the segment's designed entry into the source
+            cycle, e.g. walk_to_stand splices at the dwell ~0.39) —
+            in addition to the hold-point trigger. None: hold points
+            only."""
         if isinstance(ref_ids, int):
             ref_ids = torch.full_like(env_ids, ref_ids)
         self.pending_ref_id[env_ids] = ref_ids
+        self.pending_entry_time[env_ids] = entry_time
+        self.pending_exit_phase[env_ids] = (
+            -1.0 if exit_phase is None else exit_phase)
 
     def _active_episodic_mask(self) -> torch.Tensor:
         """Per-env: the ACTIVE reference is an episodic segment."""
@@ -864,12 +888,30 @@ class TrajectoryCommand(CommandTerm):
             | (episodic & (self.phasing_var >= 1.0 - 1e-6))
             | (self.env.episode_length_buf == 0)
         )
-        fire = pending & at_hold
+        # Splice-phase trigger: the source's (unmasked, wrapping)
+        # phase crosses the requested exit_phase this step.
+        x = self.pending_exit_phase
+        prev = self.prev_unmasked_phasing_var
+        cur = self.unmasked_phasing_var
+        crossed = (x >= 0) & (
+            ((prev <= x) & (x <= cur))
+            | ((cur < prev) & ((prev <= x) | (x <= cur)))  # wrap step
+        )
+        # exit_phase given -> the crossing is the ONLY trigger (a
+        # hold lock at phi 0/0.5 is exactly the wrong pose for a
+        # segment spliced elsewhere in the cycle); episode start
+        # still fires unconditionally.
+        has_exit = x >= 0
+        fire = pending & torch.where(
+            has_exit, crossed | (self.env.episode_length_buf == 0),
+            at_hold)
         if not fire.any():
             return
         self.active_ref_id[fire] = self.pending_ref_id[fire]
         self.pending_ref_id[fire] = self._NO_PENDING
-        self.ref_start_time[fire] = t[fire]
+        self.pending_exit_phase[fire] = -1.0
+        self.ref_start_time[fire] = t[fire] - self.pending_entry_time[fire]
+        self.pending_entry_time[fire] = 0.0
         # The new reference starts fresh: clear the phase-hold lock
         # so the segment phases from 0 instead of staying frozen.
         self.hold_phi_value[fire] = -1.0
@@ -892,6 +934,8 @@ class TrajectoryCommand(CommandTerm):
                 self.active_ref_id[fresh] = -1
                 self.pending_ref_id[fresh] = self._NO_PENDING
                 self.ref_start_time[fresh] = 0.0
+                self.pending_entry_time[fresh] = 0.0
+                self.pending_exit_phase[fresh] = -1.0
         self._update_command()
         return
 
