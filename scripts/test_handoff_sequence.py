@@ -54,9 +54,9 @@ LibraryManager = _load("library_manager").LibraryManager
 isaaclab_managers = types.ModuleType("isaaclab.managers")
 isaaclab_managers.CommandTerm = object
 isaaclab_math = types.ModuleType("isaaclab.utils.math")
-for fn in ("wrap_to_pi", "quat_apply", "quat_mul", "quat_from_euler_xyz",
-           "euler_xyz_from_quat", "yaw_quat", "quat_inv"):
-    setattr(isaaclab_math, fn, lambda *a, **k: None)
+# Catch-all (PEP 562): the traj modules import a dozen math helpers
+# at module level; none are exercised on the handoff code path.
+isaaclab_math.__getattr__ = lambda name: (lambda *a, **k: None)
 isaaclab_pkg = types.ModuleType("isaaclab")
 isaaclab_utils = types.ModuleType("isaaclab.utils")
 sys.modules.setdefault("isaaclab", isaaclab_pkg)
