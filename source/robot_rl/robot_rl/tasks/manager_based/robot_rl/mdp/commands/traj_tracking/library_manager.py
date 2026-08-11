@@ -37,8 +37,10 @@ class LibraryManager(ManagerBase):
 
         self.load_library(hf_repo)
 
-        # Store contiguous version for searchsorted
-        self._conditioning_vars_sorted = self.conditioning_vars[:, 0].contiguous()
+        # Full (n, 3) conditioner table for the nearest-gait lookup
+        # (tinh-lpa-clfrl.7.7): keying on vel_x alone made any
+        # turning gait sharing a vel_x silently unreachable.
+        self._conditioning_vars_sorted = self.conditioning_vars.contiguous()
 
     def invalidate_cache(self):
         """Invalidate the per-step cache. Call once at the start of each step."""
@@ -206,7 +208,8 @@ class LibraryManager(ManagerBase):
             torch.Tensor: The conditioning variable for each environment, shape [N].
         """
         cond_term = self.env.command_manager.get_term(self.conditioner_generator_name)
-        return cond_term.command[:, 0]
+        # (vel_x, vel_y, ang_vel_z) — the full command triple.
+        return cond_term.command[:, :3]
 
     @property
     def get_output_names(self):
@@ -417,15 +420,24 @@ class LibraryManager(ManagerBase):
         return domain_idx
 
 
-    def get_traj_indices(self, conditioner: torch.Tensor) -> torch.Tensor:
-        """Determine which trajectories are in use for each env."""
-        indicies = torch.searchsorted(
-            self._conditioning_vars_sorted,
-            conditioner.contiguous(),
-            right=False
-        ) - 1
+    # L2 weights for the nearest-gait lookup: vel_x and vel_yaw are
+    # commensurate at our scales (~0.5 m/s, ~0.3 rad/s); vel_y unused.
+    _COND_WEIGHTS = (1.0, 1.0, 1.0)
 
-        return torch.clamp(indicies, 0, len(self.trajectory_managers) - 1)
+    def get_traj_indices(self, conditioner: torch.Tensor) -> torch.Tensor:
+        """Nearest gait in (vel_x, vel_y, vel_yaw) under a weighted
+        L2. Replaces the 1D floor-searchsorted on vel_x (which could
+        never distinguish gaits sharing a vel_x — turning gaits).
+        NOTE: consumers replicating selection semantics (the MuJoCo
+        gate's period_for floor-select) must be updated in lockstep
+        when a multi-gait library ships."""
+        w = torch.tensor(self._COND_WEIGHTS, device=conditioner.device,
+                         dtype=conditioner.dtype)
+        # [n_env, 1, 3] - [1, n_traj, 3] -> [n_env, n_traj]
+        d = ((conditioner.unsqueeze(1)
+              - self._conditioning_vars_sorted.unsqueeze(0)) * w
+             ).pow(2).sum(dim=-1)
+        return torch.argmin(d, dim=1)
 
     def get_domain_times(self, t: torch.Tensor, env_ids: torch.Tensor = None) -> torch.Tensor:
         """Get the duration of the current domain for each environment.
