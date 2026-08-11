@@ -420,9 +420,11 @@ class LibraryManager(ManagerBase):
         return domain_idx
 
 
-    # L2 weights for the nearest-gait lookup: vel_x and vel_yaw are
-    # commensurate at our scales (~0.5 m/s, ~0.3 rad/s); vel_y unused.
-    _COND_WEIGHTS = (1.0, 1.0, 1.0)
+    # L2 weights for the nearest-gait lookup. vel_yaw weighted 2.5x:
+    # the standing command (0,0,0) must select the STRAIGHT gait
+    # (0.56,0,0) over a turn gait (0,0,0.289) — the phase-freeze then
+    # holds a stand, not a mid-pivot pose. 2.5 * 0.289 > 0.56.
+    _COND_WEIGHTS = (1.0, 1.0, 2.5)
 
     def get_traj_indices(self, conditioner: torch.Tensor) -> torch.Tensor:
         """Nearest gait in (vel_x, vel_y, vel_yaw) under a weighted

@@ -133,9 +133,13 @@ class LpaGaitLibraryCommandsCfg(HumanoidCommandsCfg):
             # Centered on the library's natural vel_x — commanding
             # faster pays the policy to compress the dwell.
             # pendulum7 (lean+nod, dwell 0.315 s): vel_x 0.5612.
-            lin_vel_x=(0.54, 0.58),
+            # Multi-gait span (tinh-lpa-clfrl.7.7): full range down
+            # to standing; the nearest-gait conditioner partitions
+            # commands among straight (0.5612,0,0) and the two
+            # turn-in-place gaits (0,0,+-0.2888).
+            lin_vel_x=(0.0, 0.58),
             lin_vel_y=(0.0, 0.0),
-            ang_vel_z=(0.0, 0.0),
+            ang_vel_z=(-0.29, 0.29),
             heading=(-math.pi, math.pi),
             y_pos_offset=(-0.5, 0.5),
             y_kp=(1.2, 1.8),
@@ -349,9 +353,9 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot")
 
         # Forward-only, inside the library's conditioner span.
-        self.commands.base_velocity.ranges.lin_vel_x = (0.54, 0.58)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.58)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.29, 0.29)
         self.commands.base_velocity.ranges.heading = (-3.14, 3.14)
         self.commands.base_velocity.resampling_time_range = (4.0, 8.0)
         self.commands.gait_period = None
