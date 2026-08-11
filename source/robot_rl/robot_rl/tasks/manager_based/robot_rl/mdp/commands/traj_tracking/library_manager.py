@@ -250,13 +250,15 @@ class LibraryManager(ManagerBase):
         return cond_term.command[:, :3]
 
     def get_ref_id_var(self) -> torch.Tensor:
-        """Per-env explicit reference selection (8.5b): the command
-        term may expose active_ref_id (LongTensor [N]; index into
+        """Per-env explicit reference selection (8.5b): the OWNING
+        TrajectoryCommand (which sets self.owner after construction,
+        8.5c) exposes active_ref_id (LongTensor [N]; index into
         ref_names, -1 = velocity-conditioned locomotion). Absent ->
         all -1, byte-identical to the pre-multi-skill behavior."""
-        cond_term = self.env.command_manager.get_term(self.conditioner_generator_name)
-        ref_ids = getattr(cond_term, "active_ref_id", None)
+        owner = getattr(self, "owner", None)
+        ref_ids = getattr(owner, "active_ref_id", None)
         if ref_ids is None:
+            cond_term = self.env.command_manager.get_term(self.conditioner_generator_name)
             n = cond_term.command.shape[0]
             return torch.full((n,), -1, dtype=torch.long,
                               device=self.device)

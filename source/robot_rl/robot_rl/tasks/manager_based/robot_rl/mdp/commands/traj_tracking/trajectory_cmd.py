@@ -53,6 +53,9 @@ class TrajectoryCommand(CommandTerm):
             self.manager = LibraryManager(cfg.path, cfg.hf_repo, env.device,
                                            env=env, conditioner_generator_name=cfg.conditioner_generator_name)
             self.trajectory_type = self.manager.trajectory_type
+            # Back-reference for explicit reference selection (8.5c):
+            # the library reads active_ref_id off its owner.
+            self.manager.owner = self
         else:
             raise NotImplementedError(f"Manager Type {cfg.manager_type} is not implemented!")
 
@@ -132,6 +135,23 @@ class TrajectoryCommand(CommandTerm):
         self.prev_unmasked_phasing_var = torch.zeros(self.num_envs, device=self.device)
         self.hold_envs = torch.ones(self.num_envs, device=self.device)
 
+        # Behavior-graph handoff state (tinh-lpa-clfrl.8.5c). The
+        # ACTIVE reference per env: -1 = locomotion (velocity-
+        # conditioned nearest gait — the LibraryManager reads this
+        # attribute, 8.5b); >= 0 = explicit trajectory index (an
+        # episodic graph edge or a named loop). A PENDING reference
+        # (set via set_next_ref) activates only at a HOLD POINT — a
+        # locked periodic phase hold, a saturated episodic segment
+        # (phi = 1), or episode start — because graph edges are only
+        # solved from stabilizable nodes. Each activation rebases the
+        # segment clock (ref_start_time).
+        self._NO_PENDING = -2
+        self.active_ref_id = torch.full((self.num_envs,), -1,
+                                        dtype=torch.long, device=self.device)
+        self.pending_ref_id = torch.full((self.num_envs,), self._NO_PENDING,
+                                         dtype=torch.long, device=self.device)
+        self.ref_start_time = torch.zeros(self.num_envs, device=self.device)
+
         # State for phasing variable hold logic (hold at second boundary, not first)
         self.should_hold = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.boundaries_crossed = torch.zeros(self.num_envs, dtype=torch.int, device=self.device)
@@ -181,6 +201,11 @@ class TrajectoryCommand(CommandTerm):
         cmd_mag = torch.sqrt(cmd_vel[:, 0] ** 2 + cmd_vel[:, 1] ** 2
                              + cmd_vel[:, 2] ** 2)
         self.should_hold = cmd_mag < self.cfg.hold_phi_threshold
+        # Explicit-reference envs (8.5c) are exempt from the velocity
+        # hold: a behavior segment plays with a zero velocity command
+        # by construction — freezing its phase would wedge it mid-
+        # maneuver. Episodic segments hold themselves at phi=1.
+        self.should_hold &= self.active_ref_id < 0
 
         # Reset tracking on newly holding envs or episode resets
         newly_holding = self.should_hold & ~prev_should_hold
@@ -733,12 +758,17 @@ class TrajectoryCommand(CommandTerm):
             self.y_des[env_ids] = y_pos
             self.dy_des[env_ids] = y_vel
 
-        if self.manager.get_trajectory_type() == TrajectoryType.EPISODIC:
-            if env_ids is None:
-                self.dy_des[phi == 1] *= 0
-            else:
-                episodic_mask = phi == 1
-                self.dy_des[env_ids[episodic_mask]] *= 0
+        # Saturated episodic references hold the final pose with
+        # zeroed velocities. Per-ENV episodic mask (8.5c): a mixed
+        # library serves periodic gaits and episodic segments in the
+        # same batch — the library-level type check froze nothing (or
+        # everything) once libraries mixed.
+        epi_env = self._active_episodic_mask()
+        if env_ids is None:
+            self.dy_des[epi_env & (phi >= 1.0 - 1e-6)] *= 0
+        else:
+            sat = epi_env[env_ids] & (phi >= 1.0 - 1e-6)
+            self.dy_des[env_ids[sat]] *= 0
 
     def set_user_heuristic(self, heuristic_func):
         """
@@ -802,8 +832,66 @@ class TrajectoryCommand(CommandTerm):
     def command(self):
         return self.y_des
 
+    def set_next_ref(self, env_ids: torch.Tensor, ref_ids: torch.Tensor | int):
+        """Queue a reference switch (8.5c). ref_ids: trajectory index
+        into the library's ref_names, or -1 to return to velocity-
+        conditioned locomotion. Fires at the next hold point."""
+        if isinstance(ref_ids, int):
+            ref_ids = torch.full_like(env_ids, ref_ids)
+        self.pending_ref_id[env_ids] = ref_ids
+
+    def _active_episodic_mask(self) -> torch.Tensor:
+        """Per-env: the ACTIVE reference is an episodic segment."""
+        if self.manager_type != "library" or not hasattr(self.manager, "episodic_mask"):
+            is_epi = self.trajectory_type == TrajectoryType.EPISODIC
+            return torch.full((self.num_envs,), is_epi,
+                              dtype=torch.bool, device=self.device)
+        explicit = self.active_ref_id.clamp(min=0)
+        mask = self.manager.episodic_mask[explicit]
+        # Locomotion (-1) is always periodic.
+        return mask & (self.active_ref_id >= 0)
+
+    def _process_handoffs(self, t: torch.Tensor):
+        """Activate pending reference switches at hold points (8.5c):
+        a locked periodic phase hold, a saturated episodic segment,
+        or episode start. Rebases the segment clock on activation."""
+        pending = self.pending_ref_id > self._NO_PENDING
+        if not pending.any():
+            return
+        episodic = self._active_episodic_mask()
+        at_hold = (
+            (self.hold_phi_value >= 0)
+            | (episodic & (self.phasing_var >= 1.0 - 1e-6))
+            | (self.env.episode_length_buf == 0)
+        )
+        fire = pending & at_hold
+        if not fire.any():
+            return
+        self.active_ref_id[fire] = self.pending_ref_id[fire]
+        self.pending_ref_id[fire] = self._NO_PENDING
+        self.ref_start_time[fire] = t[fire]
+        # The new reference starts fresh: clear the phase-hold lock
+        # so the segment phases from 0 instead of staying frozen.
+        self.hold_phi_value[fire] = -1.0
+        self.boundaries_crossed[fire] = 0
+        if self.manager_type == "library":
+            self.manager.invalidate_cache()
+
     def _resample_command(self, env_ids):
         """Resample the command."""
+        if env_ids is not None and len(env_ids) > 0:
+            # Fresh episodes forget any behavior-graph state (8.5c);
+            # curriculum re-seeds via set_next_ref after reset. Guard
+            # on episode start — _resample_command also fires on
+            # mid-episode resampling, which must NOT drop a running
+            # behavior segment.
+            ids = env_ids if isinstance(env_ids, torch.Tensor) else torch.tensor(
+                list(env_ids), dtype=torch.long, device=self.device)
+            fresh = ids[self.env.episode_length_buf[ids] == 0]
+            if len(fresh) > 0:
+                self.active_ref_id[fresh] = -1
+                self.pending_ref_id[fresh] = self._NO_PENDING
+                self.ref_start_time[fresh] = 0.0
         self._update_command()
         return
 
@@ -830,6 +918,13 @@ class TrajectoryCommand(CommandTerm):
             mask = torch.where(self.env.episode_length_buf == 0)[0]
             self.hold_envs[mask] = (torch.rand(len(mask), device=self.device) > self.cfg.percent_hold_phi).float()
             t *= self.hold_envs
+
+        # Behavior-graph handoffs (8.5c): fire pending switches at
+        # hold points, then rebase to the segment-local clock — a
+        # newly activated reference plays from ITS t=0. All -1 /
+        # zero state (no graph in use) leaves t untouched.
+        self._process_handoffs(t)
+        t = t - self.ref_start_time
 
         # Get conditioning variables (velocity, etc...)
         # cond_vars = self.env.command_manager.get_command(self.conditioner_generator)[:, 0]  # TODO: Allow conditioners to be more than scalars
