@@ -124,24 +124,30 @@ def main() -> int:
     joint_cols = [i for i, n in enumerate(lib.pos_output_names)
                   if "pos_" not in n and "ori_" not in n]
     ei, xi = lib.ref_id_of("laser_enter"), lib.ref_id_of("laser_exit")
+    w2s = lib.ref_id_of("walk_to_stand")
+    s2w = lib.ref_id_of("stand_to_walk")
 
     events = []          # (step, what)
-    max_step_jump = 0.0  # outside handoff steps
+    top_jumps = []       # (jump, step) outside handoff steps
     handoff_jumps = []
     prev_y = None
     prev_active = cmd.active_ref_id.clone()
 
     def script(k, t):
-        # The supervisory sequence a game/curriculum layer would run.
+        # The supervisory sequence a game/curriculum layer would run —
+        # the full graph walk: every switch travels a solved EDGE
+        # (walk->stand, stand->laser-brace, brace->stand, stand->walk).
         if k == 150:                    # 3 s of walking -> stop
             vel.command[:] = torch.tensor([[0.0, 0.0, 0.0]])
-        if k == 400:                    # queued while holding
+            cmd.set_next_ref(torch.tensor([0]), w2s)   # fires at hold
+        if k == 400:                    # queued during the stand hold
             cmd.set_next_ref(torch.tensor([0]), ei)
         if k == 650:                    # queued while enter still playing
             cmd.set_next_ref(torch.tensor([0]), xi)
         if k == 900:
+            cmd.set_next_ref(torch.tensor([0]), s2w)
+        if k == 1000:
             cmd.set_next_ref(torch.tensor([0]), -1)
-        if k == 950:
             vel.command[:] = torch.tensor([[0.56, 0.0, 0.0]])
 
     phi_log = []
@@ -166,9 +172,11 @@ def main() -> int:
                     (y_pos[0, joint_cols] - prev_y[0, joint_cols])
                     .abs().max()))
         elif prev_y is not None:
-            max_step_jump = max(max_step_jump, float(
-                (y_pos[0, joint_cols] - prev_y[0, joint_cols])
-                .abs().max()))
+            j = float((y_pos[0, joint_cols] - prev_y[0, joint_cols])
+                      .abs().max())
+            top_jumps.append((j, k))
+            top_jumps.sort(reverse=True)
+            del top_jumps[5:]
         prev_y = y_pos
         prev_active = cmd.active_ref_id.clone()
         phi_log.append((k, float(phi[0]), int(cmd.active_ref_id[0]),
@@ -176,31 +184,35 @@ def main() -> int:
 
     for e in events:
         print("event:", e)
-    print(f"max per-step joint jump (non-handoff): {max_step_jump:.4f}")
+    print(f"top non-handoff jumps: {[(round(j, 4), k) for j, k in top_jumps]}")
     print(f"handoff seams: {[round(j, 4) for j in handoff_jumps]}")
 
     # --- assertions ---
-    # 1. exactly 3 handoffs, in order enter -> exit -> locomotion
+    # 1. the full graph walk fired, in order
     kinds = [w for _, w in events]
-    assert kinds == [f"handoff -> laser_enter", "handoff -> laser_exit",
+    assert kinds == ["handoff -> walk_to_stand", "handoff -> laser_enter",
+                     "handoff -> laser_exit", "handoff -> stand_to_walk",
                      "handoff -> locomotion"], kinds
-    # 2. enter fired only after the phase hold locked (>= step 150)
-    assert events[0][0] >= 400, events[0]
-    # 3. exit fired only after enter saturated (1.95 s after enter)
-    enter_k, exit_k = events[0][0], events[1][0]
-    assert (exit_k - enter_k) * DT >= 1.90, (enter_k, exit_k)
+    # 2. walk_to_stand waited for the phase-hold lock (> step 150)
+    assert events[0][0] > 150, events[0]
+    # 3. each episodic edge saturated before the next fired
+    for (ka, wa), (kb, _), dur in ((events[0], events[1], 1.14),
+                                   (events[1], events[2], 1.95),
+                                   (events[2], events[3], 1.10)):
+        assert (kb - ka) * DT >= dur - 0.02, (wa, ka, kb)
     # 4. episodic segments saturated and held (phi == 1 with sat flag)
-    sat_steps = [s for s in phi_log
-                 if s[2] >= 0 and s[3]]
+    sat_steps = [s for s in phi_log if s[2] >= 0 and s[3]]
     assert len(sat_steps) > 50, len(sat_steps)
-    # 5. phi rebased at each handoff (starts < 0.1 right after)
-    for hk, _ in events[:2]:
+    # 5. phi rebased at each handoff onto a segment
+    for hk, _ in events[:4]:
         phi_after = [p for kk, p, a, _ in phi_log if kk == hk][0]
         assert phi_after < 0.1, (hk, phi_after)
     # 6. no teleports: continuous steps stay walking-scale; handoff
-    #    seams small (segments share the stand fixture)
-    assert max_step_jump < 0.12, max_step_jump
-    assert all(j < 0.30 for j in handoff_jumps), handoff_jumps
+    #    seams small (every switch travels a solved edge / shared
+    #    stand fixture)
+    max_step_jump = top_jumps[0][0] if top_jumps else 0.0
+    assert max_step_jump < 0.12, top_jumps
+    assert all(j < 0.15 for j in handoff_jumps), handoff_jumps
 
     print("HANDOFF SEQUENCE GATE: PASS")
     return 0
