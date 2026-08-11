@@ -60,10 +60,12 @@ class LibraryManager(ManagerBase):
             return
 
         conditioner = self.get_conditioner_var()
+        ref_ids = self.get_ref_id_var()
         if env_ids is not None:
             conditioner = conditioner[env_ids]
+            ref_ids = ref_ids[env_ids]
 
-        indices = self.get_traj_indices(conditioner)
+        indices = self.get_traj_indices(conditioner, ref_ids)
 
         # Single CPU-GPU sync: convert unique indices to CPU list
         unique_gpu = torch.unique(indices)
@@ -115,6 +117,33 @@ class LibraryManager(ManagerBase):
         # Create conditioning tensor of shape (n_traj, 2)
         self.conditioning_vars = torch.tensor(conditioner_list, device=self.device)
 
+        # Multi-skill registry (tinh-lpa-clfrl.8.5b): a library may
+        # mix velocity-conditioned periodic gaits (locomotion) with
+        # named behavior segments (episodic graph edges, 8.5a
+        # exports). Selection: an env with active_ref_id >= 0 gets
+        # that trajectory directly; -1 means locomotion -> weighted
+        # nearest-gait over the PERIODIC pool only (an episodic
+        # segment's zeroed velocity conditioner must never win a
+        # velocity command).
+        from .trajectory_manager import TrajectoryType
+        self.ref_names = [m.traj_data.name for m in self.trajectory_managers]
+        if len(set(self.ref_names)) != len(self.ref_names):
+            raise ValueError(
+                f"Duplicate trajectory names in library: {self.ref_names}")
+        self.name_to_idx = {n: i for i, n in enumerate(self.ref_names)}
+        self.episodic_mask = torch.tensor(
+            [m.traj_data.trajectory_type == TrajectoryType.EPISODIC
+             for m in self.trajectory_managers], device=self.device)
+        self.periodic_indices = torch.nonzero(
+            ~self.episodic_mask).flatten()
+        if len(self.periodic_indices) == 0:
+            # Behavior-only library: locomotion fallback is traj 0.
+            self.periodic_indices = torch.zeros(
+                1, dtype=torch.long, device=self.device)
+        self.total_times = torch.tensor(
+            [m.traj_data.total_time for m in self.trajectory_managers],
+            device=self.device)
+
         # Verify the trajectories are compatible (num_outputs, type, reference_frames)
         ref_manager = self.trajectory_managers[-1]
         num_pos_outputs = ref_manager.traj_data.num_pos_outputs
@@ -140,7 +169,16 @@ class LibraryManager(ManagerBase):
             # if manager.traj_data.reference_frames != ref_frames:
             #     raise ValueError(f"Trajectories in the library are not compatible! Varying reference_frames!"
             #                      f"Expected frames: {manager.traj_data.reference_frames}, \ngot: {ref_frames}")
-        self.trajectory_type = trajectory_type
+        # Mixed library (8.5b): the library-level type is the
+        # LOCOMOTION (periodic) type when any periodic gait exists —
+        # per-env episodic handling keys on episodic_mask via
+        # get_episodic_mask, not this scalar.
+        if bool(self.episodic_mask.all()):
+            self.trajectory_type = trajectory_type
+        else:
+            first_periodic = int(self.periodic_indices[0])
+            self.trajectory_type = self.trajectory_managers[
+                first_periodic].traj_data.trajectory_type
         self.num_pos_outputs = num_pos_outputs
         self.num_vel_outputs = num_vel_outputs
         self.pos_output_names = pos_output_names
@@ -210,6 +248,19 @@ class LibraryManager(ManagerBase):
         cond_term = self.env.command_manager.get_term(self.conditioner_generator_name)
         # (vel_x, vel_y, ang_vel_z) — the full command triple.
         return cond_term.command[:, :3]
+
+    def get_ref_id_var(self) -> torch.Tensor:
+        """Per-env explicit reference selection (8.5b): the command
+        term may expose active_ref_id (LongTensor [N]; index into
+        ref_names, -1 = velocity-conditioned locomotion). Absent ->
+        all -1, byte-identical to the pre-multi-skill behavior."""
+        cond_term = self.env.command_manager.get_term(self.conditioner_generator_name)
+        ref_ids = getattr(cond_term, "active_ref_id", None)
+        if ref_ids is None:
+            n = cond_term.command.shape[0]
+            return torch.full((n,), -1, dtype=torch.long,
+                              device=self.device)
+        return ref_ids
 
     @property
     def get_output_names(self):
@@ -426,20 +477,30 @@ class LibraryManager(ManagerBase):
     # holds a stand, not a mid-pivot pose. 2.5 * 0.289 > 0.56.
     _COND_WEIGHTS = (1.0, 1.0, 2.5)
 
-    def get_traj_indices(self, conditioner: torch.Tensor) -> torch.Tensor:
+    def get_traj_indices(self, conditioner: torch.Tensor,
+                         ref_ids: torch.Tensor | None = None) -> torch.Tensor:
         """Nearest gait in (vel_x, vel_y, vel_yaw) under a weighted
-        L2. Replaces the 1D floor-searchsorted on vel_x (which could
-        never distinguish gaits sharing a vel_x — turning gaits).
+        L2 over the PERIODIC pool. Replaces the 1D floor-searchsorted
+        on vel_x (which could never distinguish gaits sharing a vel_x
+        — turning gaits). Envs with ref_ids >= 0 (8.5b) bypass the
+        velocity lookup and get that trajectory index directly.
         NOTE: consumers replicating selection semantics (the MuJoCo
         gate's period_for floor-select) must be updated in lockstep
         when a multi-gait library ships."""
         w = torch.tensor(self._COND_WEIGHTS, device=conditioner.device,
                          dtype=conditioner.dtype)
-        # [n_env, 1, 3] - [1, n_traj, 3] -> [n_env, n_traj]
-        d = ((conditioner.unsqueeze(1)
-              - self._conditioning_vars_sorted.unsqueeze(0)) * w
+        pool = self._conditioning_vars_sorted[self.periodic_indices]
+        # [n_env, 1, 3] - [1, n_pool, 3] -> [n_env, n_pool]
+        d = ((conditioner.unsqueeze(1) - pool.unsqueeze(0)) * w
              ).pow(2).sum(dim=-1)
-        return torch.argmin(d, dim=1)
+        indices = self.periodic_indices[torch.argmin(d, dim=1)]
+        if ref_ids is not None:
+            explicit = ref_ids >= 0
+            if explicit.any():
+                n_traj = len(self.trajectory_managers)
+                indices = torch.where(
+                    explicit, ref_ids.clamp(0, n_traj - 1), indices)
+        return indices
 
     def get_domain_times(self, t: torch.Tensor, env_ids: torch.Tensor = None) -> torch.Tensor:
         """Get the duration of the current domain for each environment.
@@ -470,6 +531,23 @@ class LibraryManager(ManagerBase):
         """
 
         return self.trajectory_managers[-1].get_total_time()
+
+    def get_total_times(self, env_ids: torch.Tensor = None) -> torch.Tensor:
+        """Per-env total time of the ACTIVE trajectory (8.5b — a
+        mixed library has no single period)."""
+        self._ensure_cache(env_ids)
+        return self.total_times[self._cached_indices]
+
+    def get_episodic_mask(self, env_ids: torch.Tensor = None) -> torch.Tensor:
+        """Per-env flag: the active trajectory is an episodic segment
+        (8.5b). The phi=1 hold / handoff logic (8.5c) keys on this,
+        not on the library-level trajectory_type."""
+        self._ensure_cache(env_ids)
+        return self.episodic_mask[self._cached_indices]
+
+    def ref_id_of(self, name: str) -> int:
+        """Trajectory index for a named behavior segment (8.5b)."""
+        return self.name_to_idx[name]
 
     def order_outputs(self, pos_output_names: list[str], vel_output_names: list[str]):
         """Order outputs for all trajectory managers in the library.
