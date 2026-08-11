@@ -608,7 +608,18 @@ class TrajectoryManager(ManagerBase):
         T = self.traj_data.total_time
         if self.traj_data.trajectory_type == TrajectoryType.HALF_PERIODIC:
             T *= 2
-        domains = torch.searchsorted(self.domain_boundaries, t % T, right=False) - 1
+        if self.traj_data.trajectory_type == TrajectoryType.EPISODIC:
+            # An episodic segment SATURATES: past its end it holds the
+            # final pose (phi clamps at 1 — see get_phasing_var). The
+            # periodic wrap teleported a held segment back to its
+            # FIRST domain while phi still said 1 (found by the 8.5c
+            # handoff gate: 0.55 rad reference jumps during the hold;
+            # pre-handoff training never held past t=T, so it never
+            # expressed).
+            t_eff = torch.clamp(t, max=T)
+        else:
+            t_eff = t % T
+        domains = torch.searchsorted(self.domain_boundaries, t_eff, right=False) - 1
 
         domains = torch.clamp(domains, 0, self.expanded_num_domains - 1)
 
