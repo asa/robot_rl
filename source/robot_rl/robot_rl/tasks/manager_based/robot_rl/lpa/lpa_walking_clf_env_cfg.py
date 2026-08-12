@@ -434,3 +434,43 @@ class LpaWalkingCLFEnvCfg_PLAY(LpaWalkingCLFEnvCfg):
         self.events.base_external_force_torque = None
         self.events.push_robot = None
         self.events.gain_randomization = None
+
+
+@configclass
+class LpaWalkingCLFSkillEnvCfg(LpaWalkingCLFEnvCfg):
+    """Behavior-graph SKILL variant (tinh-lpa-clfrl.8.5d): the
+    multi-skill library (gaits + laser enter/exit episodic edges),
+    skill one-hot + param channels appended to BOTH obs groups, and
+    the graph-skill curriculum driving stand -> enter -> hold ->
+    exit -> locomotion sequences. Resume pendulum checkpoints via
+    scripts/pad_checkpoint_obs.py (+5 obs channels each group).
+    SEPARATE env id — the default lpa_walking_clf stays untouched
+    (pendulum close-out replays depend on its obs layout)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import ObservationTermCfg as _ObsTerm
+
+        self.commands.traj_ref.path = "lpa_lib/trajectories/skill_smoke"
+        self.commands.traj_ref.skill_slots = [
+            "locomotion", "walking", "laser"]
+        self.commands.traj_ref.param_channels = [
+            "azimuth", "wall_height"]
+
+        for group in (self.observations.policy,
+                      self.observations.critic):
+            group.skill_onehot = _ObsTerm(
+                func=mdp.skill_onehot,
+                params={"command_name": "traj_ref"})
+            group.skill_params = _ObsTerm(
+                func=mdp.skill_params,
+                params={"command_name": "traj_ref"})
+
+        self.events.graph_skills = EventTerm(
+            func=mdp.graph_skill_sampler,
+            mode="interval",
+            interval_range_s=(0.5, 0.5),
+            params={"command_name": "traj_ref",
+                    "enter_name": "laser_enter",
+                    "exit_name": "laser_exit",
+                    "p_enter": 0.5})

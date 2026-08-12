@@ -11,6 +11,7 @@ import cli_args
 # Environment names
 ENVIRONMENTS = {
     "lpa_walking_clf": "LPA-walking-clf",  # tinh
+    "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh 8.5d
     "vanilla": "G1-vanilla-walking",
     "vanilla_ec": "G1-vanilla-walking-ec",
     "lip_clf": "G1-lip-clf",
@@ -34,6 +35,7 @@ ENVIRONMENTS = {
 
 EXPERIMENT_NAMES = {
     "lpa_walking_clf": "lpa_walking_clf",  # tinh
+    "lpa_walking_clf_skill": "lpa_walking_clf",  # tinh 8.5d (shared exp dir)
     "vanilla": "vanilla",
     "vanilla_ec": "vanilla",
     "basic": "baseline",
