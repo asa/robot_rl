@@ -238,20 +238,36 @@ def main():
         if args_cli.env_type == "lpa_walking_clf_graphturn":
             _orig_step = env.step
 
+            def _leaves(o):
+                # rsl_rl 3.x wrappers return a TensorDict of groups.
+                if hasattr(o, "values") and not torch.is_tensor(o):
+                    return list(o.items())
+                return [("obs", o)]
+
             def _guarded_step(actions):
                 obs, rew, dones, extras = _orig_step(actions)
-                if (not torch.isfinite(obs).all()
-                        or not torch.isfinite(rew).all()):
-                    bo = (~torch.isfinite(obs)).any(dim=1)
+                dirty = False
+                for key, v in _leaves(obs):
+                    if not torch.is_tensor(v):
+                        continue
+                    fin = torch.isfinite(v)
+                    if not fin.all():
+                        dirty = True
+                        bad_env = (~fin).any(dim=1)
+                        cols = ((~fin).any(dim=0)
+                                .nonzero().flatten().tolist())
+                        print(f"[OBS-GUARD] key={key} envs:"
+                              f"{bad_env.nonzero().flatten().tolist()[:8]}"
+                              f" cols:{cols[:24]}")
+                        obs[key] = torch.nan_to_num(v)
+                if not torch.isfinite(rew).all():
+                    dirty = True
                     br = ~torch.isfinite(rew)
-                    cols = ((~torch.isfinite(obs)).any(dim=0)
-                            .nonzero().flatten().tolist())
-                    print(f"[OBS-GUARD] envs obs:"
-                          f"{bo.nonzero().flatten().tolist()[:8]} rew:"
-                          f"{br.nonzero().flatten().tolist()[:8]} "
-                          f"cols:{cols[:24]}")
-                    obs = torch.nan_to_num(obs)
+                    print(f"[OBS-GUARD] rew envs:"
+                          f"{br.nonzero().flatten().tolist()[:8]}")
                     rew = torch.nan_to_num(rew)
+                if dirty:
+                    print("[OBS-GUARD] clamped")
                 return obs, rew, dones, extras
 
             env.step = _guarded_step
