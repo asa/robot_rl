@@ -9,6 +9,40 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.envs.mdp.observations import generated_commands
 
+def skill_onehot(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """Active-skill one-hot (tinh-lpa-clfrl.8.5d): the slot of each
+    env's ACTIVE reference (behavior-graph handoff state, 8.5c) in the
+    cfg-declared skill_slots vocabulary. Locomotion (-1) maps to its
+    own slot, so pre-graph episodes emit a constant locomotion
+    one-hot — checkpoint-paddable."""
+    cmd = env.command_manager.get_term(command_name)
+    lib = cmd.manager
+    slots = torch.zeros(env.num_envs, len(cmd.cfg.skill_slots),
+                        device=env.device)
+    loco = cmd.cfg.skill_slots.index("locomotion")
+    idx = torch.full((env.num_envs,), loco, dtype=torch.long,
+                     device=env.device)
+    explicit = cmd.active_ref_id >= 0
+    if explicit.any():
+        idx[explicit] = lib.skill_slot_of_traj[
+            cmd.active_ref_id[explicit]]
+    slots[torch.arange(env.num_envs, device=env.device), idx] = 1.0
+    return slots
+
+
+def skill_params(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """Named conditioner params of the active reference (8.5d) —
+    zero for locomotion and for segments without that channel."""
+    cmd = env.command_manager.get_term(command_name)
+    lib = cmd.manager
+    out = torch.zeros(env.num_envs, lib.params_of_traj.shape[1],
+                      device=env.device)
+    explicit = cmd.active_ref_id >= 0
+    if explicit.any():
+        out[explicit] = lib.params_of_traj[cmd.active_ref_id[explicit]]
+    return out
+
+
 def base_z(env: ManagerBasedRLEnv) -> torch.Tensor:
     base_z = env.scene["robot"].data.root_pos_w[:,2]
     return base_z.unsqueeze(-1)

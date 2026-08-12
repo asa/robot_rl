@@ -28,3 +28,10 @@ class TrajectoryCommandCfg(CommandTermCfg):
     percent_hold_phi: float = -1
     hold_phi_threshold: float = -1
     phasing_boundaries: float = 1
+    # Behavior-graph skill observations (tinh-lpa-clfrl.8.5d): the
+    # declared obs layout. skill_slots is the one-hot vocabulary
+    # (slot 0 should be "locomotion"); param_channels the named
+    # continuous conditioner params (throw azimuth, wall height, ...).
+    # None = skill obs disabled (legacy envs unchanged).
+    skill_slots: list[str] = None
+    param_channels: list[str] = None

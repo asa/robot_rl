@@ -45,6 +45,11 @@ class TrajectoryData:
     total_time: float
     conditioner: list[float]
     reference_frames: list[str]     # List of the bezier frames
+    # Behavior-graph metadata (tinh-lpa-clfrl.8.5d): skill name +
+    # named conditioner params from export_clfrl_library --episodic
+    # (--skill / --param key=value). Defaults keep legacy yamls valid.
+    skill: str = "locomotion"
+    params: dict = None
 
 
 class TrajectoryManager(ManagerBase):
@@ -312,6 +317,10 @@ class TrajectoryManager(ManagerBase):
             ),
             # Reference frames
             reference_frames=ref_frames,
+            # Behavior-graph metadata (8.5d)
+            skill=data.get('skill', 'locomotion'),
+            params=(data['conditioner'].get('params')
+                    if isinstance(data['conditioner'], dict) else None),
         )
 
     def get_reference_frames(self) -> list[str]:

@@ -56,6 +56,9 @@ class TrajectoryCommand(CommandTerm):
             # Back-reference for explicit reference selection (8.5c):
             # the library reads active_ref_id off its owner.
             self.manager.owner = self
+            if getattr(cfg, "skill_slots", None):
+                self.manager.build_skill_tables(
+                    cfg.skill_slots, cfg.param_channels or [])
         else:
             raise NotImplementedError(f"Manager Type {cfg.manager_type} is not implemented!")
 

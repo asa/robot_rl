@@ -90,6 +90,24 @@ def main() -> int:
     assert not epi[idx[2]]
     print("explicit selection ->", [names[i] for i in idx.tolist()])
 
+    # Skill tables for the policy obs (8.5d): declared slot
+    # vocabulary + named param channels.
+    lib.build_skill_tables(
+        skill_slots=["locomotion", "walking", "laser"],
+        param_channels=["azimuth", "wall_height"])
+    assert int(lib.skill_slot_of_traj[ei]) == 2, lib.skill_names
+    assert int(lib.skill_slot_of_traj[xi]) == 2
+    assert lib.params_of_traj.shape[1] == 2
+    # laser segments carry no declared params -> zeros
+    assert float(lib.params_of_traj[ei].abs().sum()) == 0.0
+    # a segment exported with --param azimuth=0.5 fills its channel
+    if "laser_exit_az" in names:
+        az = lib.ref_id_of("laser_exit_az")
+        assert abs(float(lib.params_of_traj[az][0]) - 0.5) < 1e-6
+        print("param channel ->", lib.params_of_traj[az].tolist())
+    print("skill slots ->", list(zip(names,
+                                     lib.skill_slot_of_traj.tolist())))
+
     print("MULTISKILL LIBRARY GATE: PASS")
     return 0
 
