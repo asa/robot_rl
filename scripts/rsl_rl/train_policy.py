@@ -242,7 +242,13 @@ def main():
         # Load checkpoint if resuming
         if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
             print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+            try:
             runner.load(resume_path)
+        except KeyError:
+            # Padded checkpoints (pad_checkpoint_obs, 8.5d) drop
+            # the optimizer state — resume weights-only.
+            print("[INFO] no optimizer state — loading weights only")
+            runner.load(resume_path, load_optimizer=False)
 
         # Save configurations
         dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
