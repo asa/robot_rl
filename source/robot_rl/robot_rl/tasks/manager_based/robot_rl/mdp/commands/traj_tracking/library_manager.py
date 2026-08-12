@@ -153,28 +153,6 @@ class LibraryManager(ManagerBase):
         self.skill_slot_of_traj = None
         self.params_of_traj = None
 
-    def build_skill_tables(self, skill_slots: list[str],
-                           param_channels: list[str]):
-        """Map each trajectory to its skill slot + param channels
-        (tinh-lpa-clfrl.8.5d). Called by the owning TrajectoryCommand
-        when the env cfg declares skill observations."""
-        slots = []
-        for n, s in zip(self.ref_names, self.skill_names):
-            if s not in skill_slots:
-                raise ValueError(
-                    f"trajectory {n!r} carries skill {s!r}, not in "
-                    f"declared skill_slots {skill_slots}")
-            slots.append(skill_slots.index(s))
-        self.skill_slot_of_traj = torch.tensor(
-            slots, dtype=torch.long, device=self.device)
-        table = torch.zeros(len(self.trajectory_managers),
-                            len(param_channels), device=self.device)
-        for i, m in enumerate(self.trajectory_managers):
-            for k, v in (m.traj_data.params or {}).items():
-                if k in param_channels:
-                    table[i, param_channels.index(k)] = float(v)
-        self.params_of_traj = table
-
         # Verify the trajectories are compatible (num_outputs, type, reference_frames)
         ref_manager = self.trajectory_managers[-1]
         num_pos_outputs = ref_manager.traj_data.num_pos_outputs
@@ -215,6 +193,28 @@ class LibraryManager(ManagerBase):
         self.pos_output_names = pos_output_names
         self.vel_output_names = vel_output_names
         self.ref_frames = ref_frames
+
+    def build_skill_tables(self, skill_slots: list[str],
+                           param_channels: list[str]):
+        """Map each trajectory to its skill slot + param channels
+        (tinh-lpa-clfrl.8.5d). Called by the owning TrajectoryCommand
+        when the env cfg declares skill observations."""
+        slots = []
+        for n, s in zip(self.ref_names, self.skill_names):
+            if s not in skill_slots:
+                raise ValueError(
+                    f"trajectory {n!r} carries skill {s!r}, not in "
+                    f"declared skill_slots {skill_slots}")
+            slots.append(skill_slots.index(s))
+        self.skill_slot_of_traj = torch.tensor(
+            slots, dtype=torch.long, device=self.device)
+        table = torch.zeros(len(self.trajectory_managers),
+                            len(param_channels), device=self.device)
+        for i, m in enumerate(self.trajectory_managers):
+            for k, v in (m.traj_data.params or {}).items():
+                if k in param_channels:
+                    table[i, param_channels.index(k)] = float(v)
+        self.params_of_traj = table
 
     def _get_from_hugging_face(self, hf_repo: str, hf_path: str) -> Path:
         """
