@@ -281,6 +281,20 @@ def main():
 
         if agent_cfg.class_name == "OnPolicyRunner":
             runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+            # Graphturn crash chain (deterministic, 4 runs): huge
+            # finite gradients drive the SCALAR noise-std parameter
+            # NEGATIVE mid-update -> torch.normal 'std >= 0'. Floor
+            # it after EVERY optimizer step (post-step hook — a
+            # post-update clamp is too late, the crash is between
+            # minibatches).
+            if args_cli.env_type == "lpa_walking_clf_graphturn":
+                _pol = runner.alg.policy
+                if hasattr(_pol, "std") and torch.is_tensor(
+                        getattr(_pol, "std", None)):
+                    runner.alg.optimizer.register_step_post_hook(
+                        lambda opt, a, k: _pol.std.data.clamp_(
+                            min=1e-3, max=3.0))
+                    print("[STD-FLOOR] armed (1e-3 .. 3.0)")
         elif agent_cfg.class_name == "DistillationRunner":
             runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
         else:
