@@ -259,13 +259,20 @@ def main():
                         print(f"[OBS-GUARD] key={key} envs:"
                               f"{bad_env.nonzero().flatten().tolist()[:8]}"
                               f" cols:{cols[:24]}")
-                        obs[key] = torch.nan_to_num(v)
+                        obs[key] = torch.nan_to_num(
+                            v, nan=0.0, posinf=0.0,
+                            neginf=0.0)
                 if not torch.isfinite(rew).all():
                     dirty = True
                     br = ~torch.isfinite(rew)
                     print(f"[OBS-GUARD] rew envs:"
                           f"{br.nonzero().flatten().tolist()[:8]}")
-                    rew = torch.nan_to_num(rew)
+                    # BOUNDED: default nan_to_num maps
+                    # inf -> float-max — a 3.4e38 reward
+                    # exploded the advantages anyway.
+                    rew = torch.nan_to_num(
+                        rew, nan=0.0, posinf=0.0,
+                        neginf=0.0)
                 if dirty:
                     print("[OBS-GUARD] clamped")
                 return obs, rew, dones, extras

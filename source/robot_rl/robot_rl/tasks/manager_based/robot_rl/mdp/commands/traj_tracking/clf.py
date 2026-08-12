@@ -367,6 +367,15 @@ class CLF:
         # Subtract quats with box minus operator
         for body_name, indices in self.ori_body_indices_manifold.items():
             tangent_indices = self.ori_body_indices_tangent[body_name]
-            y_err[:, tangent_indices] = quat_box_minus(y_act[:, indices], y_des[:, indices])
+            # NaN-safe: box_minus of (near-)identical quats hits
+            # acos(1+eps) -> NaN (graphturn crashes: the graph
+            # curriculum's perfectly-tracked static holds drive
+            # measured == reference exactly; env 742, iter
+            # 101066, deterministic). Identical quats mean ZERO
+            # orientation error — nan_to_num(0) is exact.
+            y_err[:, tangent_indices] = torch.nan_to_num(
+                quat_box_minus(y_act[:, indices],
+                               y_des[:, indices]),
+                nan=0.0, posinf=0.0, neginf=0.0)
 
         return y_err
