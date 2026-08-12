@@ -194,6 +194,27 @@ def graph_nan_tripwire(env, env_ids, command_name: str):
     # Also flag merely ESCAPING envs (|xy| or z insane but finite).
     phys_bad |= robot.data.root_pos_w[:, 2].abs() > 5.0
     phys_bad |= robot.data.root_pos_w[:, :2].abs().max(dim=1).values > 500.0
+    # CLF-magnitude forensics: WHICH channel explodes (rewards
+    # hit -1e32 with all finiteness guards silent and the runaway
+    # termination live — so the blowup is huge-but-finite in a
+    # channel none of the guards cover).
+    v = getattr(cmd, "v", None)
+    if v is not None and torch.isfinite(v).any() and float(
+            torch.nan_to_num(v, nan=0.0, posinf=0.0).max()) > 1e6:
+        i = int(torch.nan_to_num(v, nan=0.0, posinf=0.0).argmax())
+        st_dbg = getattr(cmd, "_graph_state", None)
+        print(f"[V-BLOWUP] env {i} v={float(v[i]):.3e} "
+              f"|linvel|={float(robot.data.root_lin_vel_w[i].norm()):.2e} "
+              f"|angvel|={float(robot.data.root_ang_vel_w[i].norm()):.2e} "
+              f"|jvel|max={float(robot.data.joint_vel[i].abs().max()):.2e} "
+              f"|y_act|max={float(cmd.y_act[i].abs().max()):.2e} "
+              f"|y_des|max={float(cmd.y_des[i].abs().max()):.2e} "
+              f"|dy_act|max={float(cmd.dy_act[i].abs().max()):.2e} "
+              f"|dy_des|max={float(cmd.dy_des[i].abs().max()):.2e} "
+              f"active={int(cmd.active_ref_id[i])} "
+              f"state={int(st_dbg[i]) if st_dbg is not None else -9} "
+              f"phi={float(cmd.phasing_var[i]):.3f} "
+              f"eplen={int(env.episode_length_buf[i])}")
     if bad.any() or phys_bad.any():
         ids = torch.nonzero(bad | phys_bad).flatten()[:8]
         st = getattr(cmd, "_graph_state", None)
