@@ -52,10 +52,12 @@ names = lib.ref_names
 counts = torch.zeros(len(names) + 1, dtype=torch.long)
 handoffs = 0
 prev = cmd.active_ref_id.clone()
-obs, _ = env.get_observations()
+ret = env.get_observations()
+obs = ret[0] if isinstance(ret, tuple) else ret
 for k in range(args.steps):
     with torch.inference_mode():
-        obs, _, _, _ = env.step(policy(obs))
+        step_ret = env.step(policy(obs))
+        obs = step_ret[0]
     a = cmd.active_ref_id
     handoffs += int((a != prev).sum())
     prev = a.clone()
