@@ -291,7 +291,12 @@ def main():
                           f" reft0={float(_c.ref_start_time[i]):.3f}"
                           f" st={int(st_dbg[i]) if st_dbg is not None else -9}"
                           f" ep={int(env.unwrapped.episode_length_buf[i])}")
-                    rew = rew.clamp(min=-1.0e3, max=1.0e3)
+                # UNCONDITIONAL per-step clamp: healthy steps are
+                # ~0.3-3; +-1e3 is 300x headroom and caps any rare
+                # spike's damage (gt10 saw -1e30 episode rewards,
+                # gt11 identical code ran healthy — the blowup is
+                # STOCHASTIC; contain the class, stop chasing it).
+                rew = rew.clamp(min=-1.0e3, max=1.0e3)
                 if dirty:
                     print("[OBS-GUARD] clamped")
                 return obs, rew, dones, extras
