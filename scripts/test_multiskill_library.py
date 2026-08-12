@@ -66,7 +66,8 @@ def main() -> int:
     xi = lib.ref_id_of("laser_exit")
     assert bool(epi[ei]) and bool(epi[xi])
     assert abs(float(lib.total_times[ei]) - 1.95) < 0.01
-    assert abs(float(lib.total_times[xi]) - 1.10) < 0.01
+    # 0.94 after the 8.7 stand-normalization re-solve (was 1.10)
+    assert abs(float(lib.total_times[xi]) - 0.94) < 0.01
 
     # Locomotion selection never lands on an episodic segment — probe
     # the velocity envelope incl. the standing command (0,0,0), which
