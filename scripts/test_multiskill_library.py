@@ -57,9 +57,10 @@ def main() -> int:
     print("library:", list(zip(names, epi.tolist(),
                                lib.total_times.tolist())))
     assert "laser_enter" in names and "laser_exit" in names, names
-    n_epi = int(epi.sum())
-    assert n_epi == 2, f"expected 2 episodic segments, got {n_epi}"
-    assert len(lib.periodic_indices) == len(names) - 2
+    # The 3 velocity-conditioned gaits are the periodic pool;
+    # everything else in the folder is an episodic graph edge.
+    assert len(lib.periodic_indices) == 3, names
+    assert int(epi.sum()) == len(names) - 3, names
 
     ei = lib.ref_id_of("laser_enter")
     xi = lib.ref_id_of("laser_exit")
