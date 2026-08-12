@@ -474,3 +474,21 @@ class LpaWalkingCLFSkillEnvCfg(LpaWalkingCLFEnvCfg):
                     "enter_name": "laser_enter",
                     "exit_name": "laser_exit",
                     "p_enter": 0.5})
+
+
+@configclass
+class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
+    """Graph-turn retrain (pendulum9b post-mortem): turning as a
+    graph traversal — walk -> handed walk_to_stand -> turn cycle
+    entered at its stand -> stand_to_walk -> locomotion, with the
+    velocity command pinned to the active skill."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.graph_skills = EventTerm(
+            func=mdp.graph_turn_sampler,
+            mode="interval",
+            interval_range_s=(0.5, 0.5),
+            params={"command_name": "traj_ref",
+                    "p_turn": 0.02,
+                    "turn_periods": 2.0})
