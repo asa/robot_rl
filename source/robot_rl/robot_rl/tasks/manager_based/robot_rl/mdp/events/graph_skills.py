@@ -182,19 +182,46 @@ def graph_nan_tripwire(env, env_ids, command_name: str):
     bad |= ~torch.isfinite(cmd.phasing_var)
     vel = env.command_manager.get_term("base_velocity")
     bad |= ~torch.isfinite(vel.command).all(dim=1)
-    if bad.any():
-        ids = torch.nonzero(bad).flatten()[:8]
+    # PHYSICS blowup detector (graphturn2 forensics: the ref-side
+    # tensors stayed finite through both crashes — the classic Isaac
+    # hole is a sim explosion whose NaN root state fails every
+    # termination COMPARISON and never resets, poisoning the batch).
+    robot = env.scene["robot"]
+    phys_bad = (~torch.isfinite(robot.data.root_pos_w).all(dim=1)
+                | ~torch.isfinite(robot.data.root_quat_w).all(dim=1)
+                | ~torch.isfinite(robot.data.joint_pos).all(dim=1)
+                | ~torch.isfinite(robot.data.joint_vel).all(dim=1))
+    # Also flag merely ESCAPING envs (|xy| or z insane but finite).
+    phys_bad |= robot.data.root_pos_w[:, 2].abs() > 5.0
+    phys_bad |= robot.data.root_pos_w[:, :2].abs().max(dim=1).values > 500.0
+    if bad.any() or phys_bad.any():
+        ids = torch.nonzero(bad | phys_bad).flatten()[:8]
         st = getattr(cmd, "_graph_state", None)
         for i in ids.tolist():
-            print(f"[NAN-TRIPWIRE] env {i}: active_ref "
+            print(f"[NAN-TRIPWIRE] env {i}: phys={bool(phys_bad[i])} "
+                  f"ref={bool(bad[i])} active "
                   f"{int(cmd.active_ref_id[i])} pending "
                   f"{int(cmd.pending_ref_id[i])} phi "
                   f"{float(cmd.phasing_var[i]):.4f} ref_t0 "
                   f"{float(cmd.ref_start_time[i]):.3f} state "
                   f"{int(st[i]) if st is not None else -9} eplen "
                   f"{int(env.episode_length_buf[i])} vel "
-                  f"{vel.command[i].tolist()}")
+                  f"{vel.command[i].tolist()} rootz "
+                  f"{float(robot.data.root_pos_w[i, 2]):.2f}")
         cmd.y_des = torch.nan_to_num(cmd.y_des)
         cmd.dy_des = torch.nan_to_num(cmd.dy_des)
         cmd.phasing_var = torch.nan_to_num(cmd.phasing_var)
-        vel.vel_target_b[ids] = 0.0
+        if phys_bad.any():
+            pids = torch.nonzero(phys_bad).flatten()
+            # Scrub the NaN state in-sim FIRST (a timeout reset alone
+            # still feeds one poisoned obs batch to PPO), then force
+            # the natural timeout reset path.
+            default = robot.data.default_root_state[pids].clone()
+            default[:, :3] += env.scene.env_origins[pids]
+            robot.write_root_pose_to_sim(default[:, :7], env_ids=pids)
+            robot.write_root_velocity_to_sim(default[:, 7:13],
+                                             env_ids=pids)
+            robot.write_joint_state_to_sim(
+                robot.data.default_joint_pos[pids],
+                robot.data.default_joint_vel[pids], env_ids=pids)
+            env.episode_length_buf[pids] = env.max_episode_length
