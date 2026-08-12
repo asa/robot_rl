@@ -138,12 +138,14 @@ def graph_turn_sampler(env, env_ids, command_name: str,
         cmd.set_next_ref(ids, s2w, exit_phase=0.02)
         st[ids] = _STARTING
 
-    # 4) start saturated -> locomotion at the touchdown phase.
+    # 4) start saturated -> locomotion at the touchdown phase;
+    # the velocity term resumes its own sampling shortly.
     started = (sat & (cmd.active_ref_id == s2w) & (st == _STARTING)
                & no_pending)
     if started.any():
         ids = torch.nonzero(started).flatten()
         cmd.set_next_ref(ids, -1, entry_time=loco_entry_time)
+        vel.time_left[ids] = 2.0
         st[ids] = _FREE
 
     # 5) pin the velocity command to the ACTIVE skill (the 9b run had
@@ -166,3 +168,33 @@ def graph_turn_sampler(env, env_ids, command_name: str,
         vel.is_closed_loop_env[ids] = False
         if hasattr(vel, "is_standing_env"):
             vel.is_standing_env[ids] = False
+
+
+def graph_nan_tripwire(env, env_ids, command_name: str):
+    """Forensic guard (graphturn1 crashed on a sudden NaN at iter
+    ~101.2k with healthy rewards — a rare discrete event): every
+    tick, verify the tracking pipeline is finite; on trigger, DUMP
+    the offending envs' graph state and clamp so training survives
+    long enough to log more events."""
+    cmd = env.command_manager.get_term(command_name)
+    bad = ~torch.isfinite(cmd.y_des).all(dim=1)
+    bad |= ~torch.isfinite(cmd.dy_des).all(dim=1)
+    bad |= ~torch.isfinite(cmd.phasing_var)
+    vel = env.command_manager.get_term("base_velocity")
+    bad |= ~torch.isfinite(vel.command).all(dim=1)
+    if bad.any():
+        ids = torch.nonzero(bad).flatten()[:8]
+        st = getattr(cmd, "_graph_state", None)
+        for i in ids.tolist():
+            print(f"[NAN-TRIPWIRE] env {i}: active_ref "
+                  f"{int(cmd.active_ref_id[i])} pending "
+                  f"{int(cmd.pending_ref_id[i])} phi "
+                  f"{float(cmd.phasing_var[i]):.4f} ref_t0 "
+                  f"{float(cmd.ref_start_time[i]):.3f} state "
+                  f"{int(st[i]) if st is not None else -9} eplen "
+                  f"{int(env.episode_length_buf[i])} vel "
+                  f"{vel.command[i].tolist()}")
+        cmd.y_des = torch.nan_to_num(cmd.y_des)
+        cmd.dy_des = torch.nan_to_num(cmd.dy_des)
+        cmd.phasing_var = torch.nan_to_num(cmd.phasing_var)
+        vel.vel_target_b[ids] = 0.0

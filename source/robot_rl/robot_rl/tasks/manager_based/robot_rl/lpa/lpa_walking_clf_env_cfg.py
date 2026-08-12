@@ -492,3 +492,8 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
             params={"command_name": "traj_ref",
                     "p_turn": 0.02,
                     "turn_periods": 2.0})
+        self.events.nan_tripwire = EventTerm(
+            func=mdp.graph_nan_tripwire,
+            mode="interval",
+            interval_range_s=(0.5, 0.5),
+            params={"command_name": "traj_ref"})
