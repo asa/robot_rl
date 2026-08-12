@@ -267,12 +267,31 @@ def main():
                     br = ~torch.isfinite(rew)
                     print(f"[OBS-GUARD] rew envs:"
                           f"{br.nonzero().flatten().tolist()[:8]}")
-                    # BOUNDED: default nan_to_num maps
-                    # inf -> float-max — a 3.4e38 reward
-                    # exploded the advantages anyway.
                     rew = torch.nan_to_num(
                         rew, nan=0.0, posinf=0.0,
                         neginf=0.0)
+                if rew.abs().max() > 1.0e6:
+                    # PER-STEP magnitude forensics: which env/channel
+                    # (the 0.5 s tripwire sampled v<=1e6 while episode
+                    # rewards hit -1e30 — the spike is transient).
+                    i = int(rew.abs().argmax())
+                    _c = env.unwrapped.command_manager.get_term(
+                        "traj_ref")
+                    st_dbg = getattr(_c, "_graph_state", None)
+                    print(f"[REW-SPIKE] env {i} rew={float(rew[i]):.3e}"
+                          f" v={float(_c.v[i]):.3e}"
+                          f" vdot={float(_c.vdot[i]):.3e}"
+                          f" |y_des|={float(_c.y_des[i].abs().max()):.3e}"
+                          f" |dy_des|={float(_c.dy_des[i].abs().max()):.3e}"
+                          f" |y_act|={float(_c.y_act[i].abs().max()):.3e}"
+                          f" |dy_act|={float(_c.dy_act[i].abs().max()):.3e}"
+                          f" active={int(_c.active_ref_id[i])}"
+                          f" pend={int(_c.pending_ref_id[i])}"
+                          f" phi={float(_c.phasing_var[i]):.3f}"
+                          f" reft0={float(_c.ref_start_time[i]):.3f}"
+                          f" st={int(st_dbg[i]) if st_dbg is not None else -9}"
+                          f" ep={int(env.unwrapped.episode_length_buf[i])}")
+                    rew = rew.clamp(min=-1.0e3, max=1.0e3)
                 if dirty:
                     print("[OBS-GUARD] clamped")
                 return obs, rew, dones, extras
