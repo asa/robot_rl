@@ -291,10 +291,34 @@ def main():
                 _pol = runner.alg.policy
                 if hasattr(_pol, "std") and torch.is_tensor(
                         getattr(_pol, "std", None)):
+                    # clamp_ does NOT remove NaN — the floor alone
+                    # moved the cliff (101066 -> 101277) but NaN
+                    # GRADIENTS still poison the parameter.
+                    def _std_fix(opt, a, k):
+                        _pol.std.data = torch.nan_to_num(
+                            _pol.std.data, nan=1.0).clamp_(
+                            min=1e-3, max=3.0)
                     runner.alg.optimizer.register_step_post_hook(
-                        lambda opt, a, k: _pol.std.data.clamp_(
-                            min=1e-3, max=3.0))
+                        _std_fix)
                     print("[STD-FLOOR] armed (1e-3 .. 3.0)")
+
+                def _grad_guard(opt, a, k):
+                    for group in opt.param_groups:
+                        for prm in group["params"]:
+                            if (prm.grad is not None
+                                    and not torch.isfinite(
+                                        prm.grad).all()):
+                                for g2 in opt.param_groups:
+                                    for p2 in g2["params"]:
+                                        if p2.grad is not None:
+                                            p2.grad.zero_()
+                                print("[GRAD-GUARD] non-finite "
+                                      "grads — step skipped")
+                                return
+
+                runner.alg.optimizer.register_step_pre_hook(
+                    _grad_guard)
+                print("[GRAD-GUARD] armed")
         elif agent_cfg.class_name == "DistillationRunner":
             runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
         else:
