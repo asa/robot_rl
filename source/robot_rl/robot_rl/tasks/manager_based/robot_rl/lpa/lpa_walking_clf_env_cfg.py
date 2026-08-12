@@ -497,3 +497,7 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
             mode="interval",
             interval_range_s=(0.5, 0.5),
             params={"command_name": "traj_ref"})
+        from isaaclab.managers import TerminationTermCfg as _DoneTerm
+        self.terminations.runaway = _DoneTerm(
+            func=mdp.runaway_dynamics,
+            params={"base_vel_limit": 10.0, "joint_vel_limit": 60.0})

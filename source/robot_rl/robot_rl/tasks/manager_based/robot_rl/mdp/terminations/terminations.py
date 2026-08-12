@@ -64,3 +64,20 @@ def base_orientation(env, cmd_name: str, roll_limit_deg: float = 30.0, pitch_lim
     orientation_flag = roll_exceeded | pitch_exceeded
 
     return orientation_flag
+
+def runaway_dynamics(env, base_vel_limit: float = 10.0,
+                     joint_vel_limit: float = 60.0):
+    """Terminate envs whose simulation runs away with HUGE-BUT-FINITE
+    dynamics (tinh graphturn forensics 2026-08-12: PhysX explosions
+    that never reach NaN — joint velocities ~1e8 — lived out whole
+    episodes because nothing terminated them; the quadratic CLF
+    turned those states into -1e32 rewards and froze learning).
+    Limits sit far above the hardware envelope (HEJ no-load 17.8
+    rad/s), so healthy motion never trips."""
+    import torch
+    robot = env.scene["robot"]
+    bad = robot.data.root_lin_vel_w.norm(dim=1) > base_vel_limit
+    bad |= robot.data.joint_vel.abs().max(dim=1).values > joint_vel_limit
+    bad |= ~torch.isfinite(robot.data.root_pos_w).all(dim=1)
+    bad |= ~torch.isfinite(robot.data.joint_vel).all(dim=1)
+    return bad
