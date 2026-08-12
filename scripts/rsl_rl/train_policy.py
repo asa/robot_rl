@@ -231,6 +231,31 @@ def main():
 
         # Create and configure runner
         # create runner from rsl-rl
+        # NaN forensics (graphturn crashes are DETERMINISTIC at
+        # iter ~101066 with ref+physics tripwires silent): guard the
+        # wrapper boundary and report exactly which obs columns /
+        # envs go non-finite, then clamp so training survives.
+        if args_cli.env_type == "lpa_walking_clf_graphturn":
+            _orig_step = env.step
+
+            def _guarded_step(actions):
+                obs, rew, dones, extras = _orig_step(actions)
+                if (not torch.isfinite(obs).all()
+                        or not torch.isfinite(rew).all()):
+                    bo = (~torch.isfinite(obs)).any(dim=1)
+                    br = ~torch.isfinite(rew)
+                    cols = ((~torch.isfinite(obs)).any(dim=0)
+                            .nonzero().flatten().tolist())
+                    print(f"[OBS-GUARD] envs obs:"
+                          f"{bo.nonzero().flatten().tolist()[:8]} rew:"
+                          f"{br.nonzero().flatten().tolist()[:8]} "
+                          f"cols:{cols[:24]}")
+                    obs = torch.nan_to_num(obs)
+                    rew = torch.nan_to_num(rew)
+                return obs, rew, dones, extras
+
+            env.step = _guarded_step
+
         if agent_cfg.class_name == "OnPolicyRunner":
             runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
         elif agent_cfg.class_name == "DistillationRunner":
