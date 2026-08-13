@@ -245,6 +245,16 @@ def main():
                 return [("obs", o)]
 
             def _guarded_step(actions):
+                # Action clamp at the env boundary. gt13 forensics:
+                # tracking terms healthy, but action_rate_l2 hit
+                # -1e24 — actions ran away to ~1e12 via the
+                # last_action-observation feedback loop (big action
+                # -> big obs -> bigger mu; nothing bounded FINITE
+                # values). Healthy |action| is ~1-4; +-10 is
+                # generous and breaks the loop. Executed-vs-stored
+                # mismatch is the standard rsl-rl clip_actions
+                # semantics.
+                actions = actions.clamp(-10.0, 10.0)
                 obs, rew, dones, extras = _orig_step(actions)
                 dirty = False
                 for key, v in _leaves(obs):
@@ -259,9 +269,17 @@ def main():
                         print(f"[OBS-GUARD] key={key} envs:"
                               f"{bad_env.nonzero().flatten().tolist()[:8]}"
                               f" cols:{cols[:24]}")
-                        obs[key] = torch.nan_to_num(
+                        v = torch.nan_to_num(
                             v, nan=0.0, posinf=0.0,
                             neginf=0.0)
+                        obs[key] = v
+                    # Finite-but-huge obs pass nan_to_num untouched
+                    # (the gt13 runaway rode through here at 1e12).
+                    # Normalized obs live in ~[-10, 10]; +-1e3 never
+                    # clips legit signal.
+                    if v.abs().max() > 1.0e3:
+                        dirty = True
+                        obs[key] = v.clamp(-1.0e3, 1.0e3)
                 if not torch.isfinite(rew).all():
                     dirty = True
                     br = ~torch.isfinite(rew)
