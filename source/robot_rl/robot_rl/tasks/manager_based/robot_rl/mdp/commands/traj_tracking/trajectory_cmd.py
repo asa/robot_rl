@@ -922,23 +922,31 @@ class TrajectoryCommand(CommandTerm):
         if self.manager_type == "library":
             self.manager.invalidate_cache()
 
-    def _resample_command(self, env_ids):
-        """Resample the command."""
+    def reset(self, env_ids=None):
+        """Episode reset: forget ALL behavior-graph state for the
+        reset envs (gt12 forensics: the episode_length_buf==0 guard
+        in _resample_command never matched because the command
+        manager resets BEFORE the buffer zeroes — every env dying
+        mid-sequence respawned tracking a STALE explicit reference
+        at the wrong phase, 220k reward spikes / run). reset() fires
+        only on true episode resets; mid-episode resampling goes
+        through _resample_command and never touches graph state."""
         if env_ids is not None and len(env_ids) > 0:
-            # Fresh episodes forget any behavior-graph state (8.5c);
-            # curriculum re-seeds via set_next_ref after reset. Guard
-            # on episode start — _resample_command also fires on
-            # mid-episode resampling, which must NOT drop a running
-            # behavior segment.
             ids = env_ids if isinstance(env_ids, torch.Tensor) else torch.tensor(
                 list(env_ids), dtype=torch.long, device=self.device)
-            fresh = ids[self.env.episode_length_buf[ids] == 0]
-            if len(fresh) > 0:
-                self.active_ref_id[fresh] = -1
-                self.pending_ref_id[fresh] = self._NO_PENDING
-                self.ref_start_time[fresh] = 0.0
-                self.pending_entry_time[fresh] = 0.0
-                self.pending_exit_phase[fresh] = -1.0
+            self.active_ref_id[ids] = -1
+            self.pending_ref_id[ids] = self._NO_PENDING
+            self.ref_start_time[ids] = 0.0
+            self.pending_entry_time[ids] = 0.0
+            self.pending_exit_phase[ids] = -1.0
+            if hasattr(self, "_graph_state"):
+                self._graph_state[ids] = 0
+        return super().reset(env_ids)
+
+    def _resample_command(self, env_ids):
+        """Resample the command (mid-episode resampling must NOT
+        drop a running behavior segment — graph state is cleared in
+        reset() only)."""
         self._update_command()
         return
 
