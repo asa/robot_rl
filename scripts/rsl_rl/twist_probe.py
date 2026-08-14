@@ -41,21 +41,9 @@ env_cfg.scene.num_envs = args_cli.num_envs
 env = gym.make("LPA-walking-clf-graphturn", cfg=env_cfg)
 env = RslRlVecEnvWrapper(env)
 
-agent_cfg = {"empirical_normalization": False,
-             "policy": {"class_name": "ActorCritic",
-                        "init_noise_std": 1.0,
-                        "actor_hidden_dims": [512, 256, 128],
-                        "critic_hidden_dims": [512, 256, 128],
-                        "activation": "elu"},
-             "algorithm": {"class_name": "PPO", "value_loss_coef": 1.0,
-                           "use_clipped_value_loss": True, "clip_param": 0.2,
-                           "entropy_coef": 0.005, "num_learning_epochs": 5,
-                           "num_mini_batches": 4, "learning_rate": 1e-3,
-                           "schedule": "adaptive", "gamma": 0.99,
-                           "lam": 0.95, "desired_kl": 0.01,
-                           "max_grad_norm": 1.0},
-             "num_steps_per_env": 24, "save_interval": 50,
-             "experiment_name": "probe", "device": "cuda:0"}
+import yaml
+agent_cfg = yaml.safe_load(
+    open(os.path.join(args_cli.run, "params/agent.yaml")))
 runner = OnPolicyRunner(env, agent_cfg, log_dir=None, device="cuda:0")
 ckpts = sorted(glob.glob(os.path.join(args_cli.run, "model_*.pt")),
                key=lambda p: int(p.rsplit("_", 1)[1].split(".")[0]))
