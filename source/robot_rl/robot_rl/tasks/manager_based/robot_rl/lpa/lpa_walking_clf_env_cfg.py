@@ -501,3 +501,15 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
         self.terminations.runaway = _DoneTerm(
             func=mdp.runaway_dynamics,
             params={"base_vel_limit": 10.0, "joint_vel_limit": 60.0})
+        # Waist-twist exploit (gt14, twist probe 2026-08-14): the
+        # chest is not a tracked body and chest_upright ignores yaw,
+        # so at Q=1 the policy walked with the torso twisted 90-180
+        # deg (64/64 envs at the +-pi joint limit). Same escalation
+        # as the shoulder pump fix (2026-08-02): style channel up,
+        # plus a hard termination far outside honest tracking
+        # (references keep the waist within ~0.3 rad).
+        self.commands.traj_ref.Q_weights = dict(
+            self.commands.traj_ref.Q_weights)
+        self.commands.traj_ref.Q_weights["joint:WAIST_YAW"] = [8.0, 4.0]
+        self.terminations.waist_twist = _DoneTerm(
+            func=mdp.waist_twist, params={"limit": 2.2})

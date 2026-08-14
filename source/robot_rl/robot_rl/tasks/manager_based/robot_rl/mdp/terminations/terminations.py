@@ -81,3 +81,15 @@ def runaway_dynamics(env, base_vel_limit: float = 10.0,
     bad |= ~torch.isfinite(robot.data.root_pos_w).all(dim=1)
     bad |= ~torch.isfinite(robot.data.joint_vel).all(dim=1)
     return bad
+
+
+def waist_twist(env, limit: float = 2.2):
+    """Terminate envs riding WAIST_YAW toward its +-pi joint limit
+    (graphturn14 twist probe 2026-08-14: 64/64 envs walked with the
+    torso twisted 90-180 deg — the chest is not a tracked body, so
+    a pi-twist was nearly free). Every reference keeps the waist
+    within ~0.3 rad; 2.2 rad is unreachable by honest tracking."""
+    import torch
+    robot = env.scene["robot"]
+    idx = robot.data.joint_names.index("WAIST_YAW")
+    return robot.data.joint_pos[:, idx].abs() > limit
