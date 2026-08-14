@@ -41,7 +41,9 @@ ckpts = sorted(glob.glob(os.path.join(run, "model_*.pt")),
                key=lambda p: int(p.split("_")[-1].split(".")[0]))
 agent_cfg = yaml.safe_load(open(os.path.join(run, "params/agent.yaml")))
 runner = OnPolicyRunner(env, agent_cfg, log_dir=None, device="cuda:0")
-runner.load(ckpts[-1])
+# Weights-only: surgery checkpoints (fold/pad) drop the
+# optimizer state; gates never optimize.
+runner.load(ckpts[-1], load_optimizer=False)
 policy = runner.get_inference_policy(device="cuda:0")
 print(f"gate on {ckpts[-1]}")
 
