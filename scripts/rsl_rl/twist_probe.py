@@ -57,7 +57,8 @@ jn = robot.data.joint_names
 waist_idx = next(i for i, n in enumerate(jn) if "WAIST" in n.upper())
 print(f"waist joint: {jn[waist_idx]}")
 
-obs, _ = env.get_observations()
+ret = env.get_observations()
+obs = ret[0] if isinstance(ret, tuple) else ret
 wmax = torch.zeros(args_cli.num_envs, device="cuda:0")
 for step in range(args_cli.steps):
     with torch.inference_mode():
