@@ -18,6 +18,12 @@ from train_policy import ENVIRONMENTS, EXPERIMENT_NAMES
 
 SIM_ENVIRONMENTS = {
     "lpa_walking_clf": "LPA-walking-clf-play",  # tinh
+    # Skill/graph envs have no play variant — play the train cfg so
+    # the graph sampler drives stop->turn->start traversals on
+    # camera (obs include the +5 skill channels the checkpoint
+    # expects).
+    "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh
+    "lpa_walking_clf_graphturn": "LPA-walking-clf-graphturn",  # tinh
 
     "vanilla": "G1-vanilla-walking",
     "lip_clf": "G1-lip-ref-play",
