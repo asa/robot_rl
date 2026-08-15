@@ -161,6 +161,23 @@ class TrajectoryCommand(CommandTerm):
         # segment's designed splice point (walk_to_stand enters at
         # the dwell, not at the phase-hold lock).
         self.pending_entry_time = torch.zeros(self.num_envs, device=self.device)
+        # Anchored yaw tracking (tinh-lpa-clfrl.7.7.v3): during an
+        # EXPLICIT reference, base yaw tracks ACCUMULATED rotation
+        # since segment entry. The default heading-relative
+        # alignment re-anchors to the measured stance foot at every
+        # domain switch, so an unrotated robot's yaw error RESETS
+        # each step instead of accumulating (gt15 graph gate: median
+        # 17 deg per turn vs 74 commanded). anchor stores the
+        # measured stance yaw at handoff; the desired side rotates
+        # by the reference's conditioner yaw rate x segment time.
+        self.anchor_yaw_act = torch.zeros(self.num_envs, device=self.device)
+        try:
+            self._core_ori_idx = torch.tensor(
+                [self.ordered_pos_output_names.index(f"CORE:ori_{ax}")
+                 for ax in ("x", "y", "z", "w")],
+                dtype=torch.long, device=self.device)
+        except ValueError:
+            self._core_ori_idx = None
         self.pending_exit_phase = torch.full((self.num_envs,), -1.0,
                                              device=self.device)
 
@@ -914,6 +931,9 @@ class TrajectoryCommand(CommandTerm):
         self.pending_ref_id[fire] = self._NO_PENDING
         self.pending_exit_phase[fire] = -1.0
         self.ref_start_time[fire] = t[fire] - self.pending_entry_time[fire]
+        # Anchor the measured stance yaw at segment entry (7.7.v3).
+        self.anchor_yaw_act[fire] = _yaw_of_quat_wxyz(
+            self.ref_poses[fire, 3:7])
         self.pending_entry_time[fire] = 0.0
         # The new reference starts fresh: clear the phase-hold lock
         # so the segment phases from 0 instead of staying frozen.
@@ -939,6 +959,7 @@ class TrajectoryCommand(CommandTerm):
             self.ref_start_time[ids] = 0.0
             self.pending_entry_time[ids] = 0.0
             self.pending_exit_phase[ids] = -1.0
+            self.anchor_yaw_act[ids] = 0.0
             if hasattr(self, "_graph_state"):
                 self._graph_state[ids] = 0
         return super().reset(env_ids)
@@ -995,6 +1016,26 @@ class TrajectoryCommand(CommandTerm):
         self.get_desired_outputs(t)
         end = time.perf_counter()
         self.get_desired_output_time = (end - start) * torch.ones(self.num_envs, device=self.device)
+
+        # Anchored yaw (7.7.v3): for explicit refs, inject the
+        # ACCUMULATED rotation into the CORE ori channel on both
+        # sides — measured: actual stance-yaw change since entry;
+        # desired: the reference's conditioner yaw rate x segment
+        # time (t is segment-local here). Zero-yaw segments (stop/
+        # start/laser) anchor heading too, which suppresses drift.
+        anch = self.active_ref_id >= 0
+        if (anch.any() and self._core_ori_idx is not None
+                and self.manager_type == "library"):
+            ids = anch.nonzero().flatten()
+            live_yaw = _yaw_of_quat_wxyz(self.ref_poses[ids, 3:7])
+            dyaw_act = wrap_to_pi(live_yaw - self.anchor_yaw_act[ids])
+            yaw_rate = self.manager.conditioning_vars[
+                self.active_ref_id[ids], 2]
+            dyaw_des = yaw_rate * t[ids]
+            _rotate_quat_channel_z(self.y_act, ids,
+                                   self._core_ori_idx, dyaw_act)
+            _rotate_quat_channel_z(self.y_des, ids,
+                                   self._core_ori_idx, dyaw_des)
 
         start = time.perf_counter()
         vdot, vcur = self.clf.compute_vdot(self.y_act, self.y_des, self.dy_act, self.dy_des)
@@ -1219,6 +1260,32 @@ class TrajectoryCommand(CommandTerm):
                 raise ValueError(f"Reference frame '{frame_name}' not found in robot body names.")
 
         return frame_indices, expanded_frames
+
+
+def _yaw_of_quat_wxyz(q: torch.Tensor) -> torch.Tensor:
+    """Yaw of [N, 4] wxyz quaternions."""
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    return torch.atan2(2.0 * (w * z + x * y),
+                       1.0 - 2.0 * (y * y + z * z))
+
+
+def _rotate_quat_channel_z(y: torch.Tensor, ids: torch.Tensor,
+                           idx_xyzw: torch.Tensor,
+                           dyaw: torch.Tensor) -> None:
+    """Pre-rotate a quaternion channel (stored as x,y,z,w slots at
+    idx_xyzw) by qz(dyaw), in place, for the given env ids
+    (tinh-lpa-clfrl.7.7.v3 anchored yaw)."""
+    h = 0.5 * dyaw
+    zw, zz = torch.cos(h), torch.sin(h)
+    qx = y[ids.unsqueeze(1), idx_xyzw.unsqueeze(0)]
+    x, yy, z, w = qx[:, 0], qx[:, 1], qx[:, 2], qx[:, 3]
+    out = torch.stack([
+        zw * x - zz * yy,
+        zw * yy + zz * x,
+        zw * z + zz * w,
+        zw * w - zz * z,
+    ], dim=1)
+    y[ids.unsqueeze(1), idx_xyzw.unsqueeze(0)] = out
 
 
 def _align_yaw(vec, root_quat):
