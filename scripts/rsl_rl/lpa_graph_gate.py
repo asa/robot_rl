@@ -80,7 +80,9 @@ for step in range(args.steps):
         obs, _, _, _ = env.step(policy(obs))
     st = getattr(cmd, "_graph_state", None)
     if st is None:
-        raise RuntimeError("no _graph_state on command term")
+        # The sampler creates its state lazily on the first
+        # interval tick (~0.5 s in) — nothing to score yet.
+        continue
     turning = st == _TURNING
     entered = turning & ~prev_turning
     exited = ~turning & prev_turning
