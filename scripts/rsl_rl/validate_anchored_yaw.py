@@ -47,7 +47,19 @@ env.get_observations()
 zero = torch.zeros(2, uenv.action_manager.total_action_dim,
                    device="cuda:0")
 ids = torch.tensor([0, 1], device="cuda:0")
-cmd.set_next_ref(ids, ref, entry_time=0.0)
+# Warm two steps so ref_poses is live, then activate DIRECTLY —
+# this probe tests the anchor math, not the handoff machinery
+# (which needs a hold point and is already gate-proven).
+for _ in range(2):
+    with torch.inference_mode():
+        env.step(zero)
+t_now = uenv.episode_length_buf.float() * uenv.step_dt
+cmd.active_ref_id[ids] = ref
+cmd.ref_start_time[ids] = t_now[ids]
+from robot_rl.tasks.manager_based.robot_rl.mdp.commands.traj_tracking.trajectory_cmd import (
+    _yaw_of_quat_wxyz,
+)
+cmd.anchor_yaw_act[ids] = _yaw_of_quat_wxyz(cmd.ref_poses[ids, 3:7])
 errs = []
 for step in range(args.steps):
     with torch.inference_mode():
