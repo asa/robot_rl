@@ -489,8 +489,12 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
             func=mdp.graph_turn_sampler,
             mode="interval",
             interval_range_s=(0.5, 0.5),
+            # p_turn 0.02 -> 0.10 (gt16 forensics): turn attempts
+            # were so rare the policy never learned them — it
+            # twisted, died on the fence, and the termination stat
+            # rounded to 0.0000 in training logs.
             params={"command_name": "traj_ref",
-                    "p_turn": 0.02,
+                    "p_turn": 0.10,
                     "turn_periods": 2.0})
         self.events.nan_tripwire = EventTerm(
             func=mdp.graph_nan_tripwire,
@@ -513,3 +517,15 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
         self.commands.traj_ref.Q_weights["joint:WAIST_YAW"] = [8.0, 4.0]
         self.terminations.waist_twist = _DoneTerm(
             func=mdp.waist_twist, params={"limit": 2.2})
+        # GRADED waist penalty (gt16 instrumented gate: 1-3 envs hit
+        # the 2.2 fence EVERY step under turn demand — death gives
+        # avoidance, not guidance). Continuous gradient toward the
+        # honest pelvis-stepping turn; the fence stays as backstop.
+        from isaaclab.managers import RewardTermCfg as _RewTerm
+        from isaaclab.managers import SceneEntityCfg as _SceneCfg
+        import isaaclab.envs.mdp as _ilmdp
+        self.rewards.waist_quiet = _RewTerm(
+            func=_ilmdp.joint_deviation_l1,
+            weight=-1.5,
+            params={"asset_cfg": _SceneCfg(
+                "robot", joint_names=["WAIST_YAW"])})
