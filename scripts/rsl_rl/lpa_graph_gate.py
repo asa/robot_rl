@@ -98,10 +98,22 @@ for step in range(args.steps):
     for name in ("waist_twist", "runaway"):
         if name in tm.active_terms:
             bad_terms += int(tm.get_term(name).sum())
-    if step % 300 == 299:
+    if step % 100 == 99:
+        # State histogram + per-term forensics (gt16: sequences=0,
+        # bad-terms 1558 while training showed those terms at 0).
+        hist = torch.bincount(st.clamp(min=0).long(), minlength=5)
+        terms = {}
+        for name in tm.active_terms:
+            v = int(tm.get_term(name).sum())
+            if v:
+                terms[name] = terms.get(name, 0) + v
         print(f"step {step+1}: sequences {int(seq_count.sum())}"
               f" (envs with >=1: {int((seq_count > 0).sum())}/{N})"
-              f" bad-terms {bad_terms}")
+              f" bad-terms {bad_terms}"
+              f" states[free,stop,turn,start,x]={hist.tolist()}"
+              f" active>=0:{int((cmd.active_ref_id >= 0).sum())}"
+              f" pending:{int((cmd.pending_ref_id > -2).sum())}"
+              f" terms-now:{terms}")
 
 # Expected magnitude: turn cycle vel_yaw x periods x cycle time.
 turn_periods = env_cfg.events.graph_skills.params.get("turn_periods", 2.0)
