@@ -35,3 +35,9 @@ class TrajectoryCommandCfg(CommandTermCfg):
     # None = skill obs disabled (legacy envs unchanged).
     skill_slots: list[str] = None
     param_channels: list[str] = None
+    # Full-body imitation mode (tinh-lpa-clfrl.7.7.v3): during
+    # explicit graph segments every joint error channel is scaled by
+    # imitation_gain (equivalent to Q x gain^2), easing in over
+    # imitation_ease_s. 1.0 = off (legacy envs unchanged).
+    imitation_gain: float = 1.0
+    imitation_ease_s: float = 0.3

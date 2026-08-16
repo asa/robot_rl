@@ -515,6 +515,12 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
         self.commands.traj_ref.Q_weights = dict(
             self.commands.traj_ref.Q_weights)
         self.commands.traj_ref.Q_weights["joint:WAIST_YAW"] = [8.0, 4.0]
+        # Full-body imitation during explicit segments (user
+        # direction 2026-08-16 after the gt16 folding exploit):
+        # segments are choreography — every joint channel x4
+        # (Q x16), eased in over 0.3 s.
+        self.commands.traj_ref.imitation_gain = 4.0
+        self.commands.traj_ref.imitation_ease_s = 0.3
         self.terminations.waist_twist = _DoneTerm(
             func=mdp.waist_twist, params={"limit": 2.2})
         # GRADED waist penalty (gt16 instrumented gate: 1-3 envs hit

@@ -195,14 +195,24 @@ class CLF:
         dy_act: torch.Tensor,
         dy_nom: torch.Tensor,
         domain_idx: int = 0,
+        channel_scale: torch.Tensor = None,
     ) -> torch.Tensor:
         """
         Evaluate V = (y_act - y_nom)^T P (y_act - y_nom).
+
+        channel_scale: optional [N, n_tangent] per-env error scaling
+        (tinh-lpa-clfrl.7.7.v3 full-body imitation mode: explicit
+        segments weight every joint hard so the whole-body
+        choreography is tracked — scaling the ERROR is equivalent to
+        scaling Q by scale^2).
         """
 
         y_err = self.compute_y_err(y_act, y_nom)
 
         dy_err = dy_act - dy_nom
+        if channel_scale is not None:
+            y_err = y_err * channel_scale
+            dy_err = dy_err * channel_scale
         batch_size = y_act.shape[0]
         eta = torch.zeros(batch_size,self.n_outputs, device=y_act.device)
         eta[:,0::2] = y_err      # even indices: positions
@@ -232,12 +242,13 @@ class CLF:
         y_nom: torch.Tensor,
         dy_act: torch.Tensor,
         dy_nom: torch.Tensor,
-        # yaw_idx: list[int],
+        channel_scale: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Compute V_dot = (V_curr - V_prev) / sim_dt, returns (vdot, V_curr).
         """
-        v_curr = self.compute_v(y_act, y_nom, dy_act, dy_nom,)# yaw_idx)
+        v_curr = self.compute_v(y_act, y_nom, dy_act, dy_nom,
+                                channel_scale=channel_scale)
        
         dt = self.sim_dt
         B = v_curr.shape[0]

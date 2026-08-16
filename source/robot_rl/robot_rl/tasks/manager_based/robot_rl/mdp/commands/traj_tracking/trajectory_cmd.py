@@ -171,6 +171,16 @@ class TrajectoryCommand(CommandTerm):
         # measured stance yaw at handoff; the desired side rotates
         # by the reference's conditioner yaw rate x segment time.
         self.anchor_yaw_act = torch.zeros(self.num_envs, device=self.device)
+        # Full-body imitation rows (7.7.v3): every joint tangent
+        # channel, scaled up during explicit segments.
+        self._joint_tan_idx = torch.tensor(
+            [i for i, n in enumerate(self.ordered_vel_output_names)
+             if n.startswith("joint:")],
+            dtype=torch.long, device=self.device)
+        self._imitation_gain = float(
+            getattr(cfg, "imitation_gain", 1.0) or 1.0)
+        self._imitation_ease_s = float(
+            getattr(cfg, "imitation_ease_s", 0.3) or 0.3)
         try:
             self._core_ori_idx = torch.tensor(
                 [self.ordered_pos_output_names.index(f"CORE:ori_{ax}")
@@ -1037,8 +1047,27 @@ class TrajectoryCommand(CommandTerm):
             _rotate_quat_channel_z(self.y_des, ids,
                                    self._core_ori_idx, dyaw_des)
 
+        # Full-body imitation during explicit segments (7.7.v3,
+        # user direction after the gt16 folding exploit): the segment
+        # is choreography — weight EVERY joint channel hard so any
+        # posture deviation (fold, twist, hunch) is penalized as a
+        # class. Gain eases in over imitation_ease_s (vdot is a
+        # numeric difference; a step-change would spike it).
+        channel_scale = None
+        if self._imitation_gain > 1.0 and anch.any():
+            ids = anch.nonzero().flatten()
+            channel_scale = torch.ones(
+                self.num_envs, len(self.ordered_vel_output_names),
+                device=self.device)
+            ease = torch.clamp(
+                t[ids] / self._imitation_ease_s, max=1.0)
+            g = 1.0 + (self._imitation_gain - 1.0) * ease
+            channel_scale[ids.unsqueeze(1),
+                          self._joint_tan_idx.unsqueeze(0)] = (
+                g.unsqueeze(1))
+
         start = time.perf_counter()
-        vdot, vcur = self.clf.compute_vdot(self.y_act, self.y_des, self.dy_act, self.dy_des)
+        vdot, vcur = self.clf.compute_vdot(self.y_act, self.y_des, self.dy_act, self.dy_des, channel_scale=channel_scale)
 
         # # TODO: Test
         # ddy_act = self.compute_measured_acceleration(self.ref_poses[:, :-4])
