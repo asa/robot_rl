@@ -72,8 +72,12 @@ obs = ret[0] if isinstance(ret, tuple) else ret
 N = args.num_envs
 prev_turning = torch.zeros(N, dtype=torch.bool, device="cuda:0")
 yaw_at_entry = torch.zeros(N, device="cuda:0")
+step_at_entry = torch.zeros(N, dtype=torch.long, device="cuda:0")
+ep_at_entry = torch.zeros(N, dtype=torch.long, device="cuda:0")
 seq_count = torch.zeros(N, dtype=torch.long, device="cuda:0")
 deltas = []
+durations = []
+aborted = 0
 bad_terms = 0
 for step in range(args.steps):
     with torch.inference_mode():
@@ -88,11 +92,24 @@ for step in range(args.steps):
     exited = ~turning & prev_turning
     if entered.any():
         yaw_at_entry[entered] = base_yaw()[entered]
+        step_at_entry[entered] = step
+        ep_at_entry[entered] = uenv.episode_length_buf[entered]
     if exited.any():
+        # An episode RESET mid-turn also looks like an exit (the
+        # reset clears graph state) — those are ABORTS, not
+        # completed sequences, and their yaw delta is meaningless.
+        ep_now = uenv.episode_length_buf[exited]
+        clean = ep_now > ep_at_entry[exited]
+        ids_ex = exited.nonzero().flatten()
         d = wrap_to_pi(base_yaw()[exited] - yaw_at_entry[exited])
-        for v in d.tolist():
-            deltas.append(v)
-        seq_count[exited] += 1
+        dur = (step - step_at_entry[exited]).float()
+        for k in range(len(ids_ex)):
+            if bool(clean[k]):
+                deltas.append(float(d[k]))
+                durations.append(float(dur[k]))
+            else:
+                aborted += 1
+        seq_count[ids_ex[clean]] += 1
     prev_turning = turning
     tm = uenv.termination_manager
     for name in ("waist_twist", "runaway"):
@@ -123,11 +140,24 @@ ok_cov = int((seq_count > 0).sum()) == N
 err = (dt.abs() - expect).abs() if len(dt) else torch.zeros(0)
 ok_yaw = len(dt) > 0 and bool((err <= args.yaw_tol).float().mean() >= 0.8)
 ok_term = bad_terms == 0
-print(f"GRAPH-GATE sequences={len(dt)} envs-covered="
-      f"{int((seq_count > 0).sum())}/{N}"
-      f" |dyaw| median={dt.abs().median():.3f} expect={expect:.3f}"
-      f" within-tol={float((err <= args.yaw_tol).float().mean() if len(dt) else 0):.2f}"
-      f" bad-terms={bad_terms}" if len(dt) else
-      f"GRAPH-GATE sequences=0 envs-covered=0/{N} bad-terms={bad_terms}")
+du = torch.tensor(durations) if durations else torch.zeros(0)
+# Steps the turn SHOULD last: turn_periods x cycle time / dt.
+want_steps = turn_periods * 2.4 / float(uenv.step_dt)
+if len(dt):
+    # Rate check: yaw actually achieved per second of turning,
+    # vs the reference's commanded rate. Separates "cut short"
+    # from "refuses to rotate".
+    secs = du * float(uenv.step_dt)
+    rate = (dt.abs() / secs.clamp(min=1e-3))
+    print(f"GRAPH-GATE sequences={len(dt)} aborted={aborted}"
+          f" envs-covered={int((seq_count > 0).sum())}/{N}"
+          f" |dyaw| median={dt.abs().median():.3f} expect={expect:.3f}"
+          f" within-tol={float((err <= args.yaw_tol).float().mean()):.2f}"
+          f" dur median={du.median():.0f}/{want_steps:.0f} steps"
+          f" rate median={rate.median():.3f} vs 0.269 rad/s"
+          f" bad-terms={bad_terms}")
+else:
+    print(f"GRAPH-GATE sequences=0 aborted={aborted}"
+          f" envs-covered=0/{N} bad-terms={bad_terms}")
 print("GRAPH-GATE", "PASS" if (ok_cov and ok_yaw and ok_term) else "FAIL")
 app.close()
