@@ -93,3 +93,28 @@ def waist_twist(env, limit: float = 2.2):
     robot = env.scene["robot"]
     idx = robot.data.joint_names.index("WAIST_YAW")
     return robot.data.joint_pos[:, idx].abs() > limit
+
+
+def base_height_above_feet(env, minimum_height: float = 0.6,
+                           feet_names: tuple = ("L_ANKLE", "R_ANKLE")):
+    """Fall detector measured against the robot's OWN FEET, not world
+    zero (tinh-lpa-ramp.5).
+
+    IsaacLab's `root_height_below_minimum` documents itself as flat-
+    terrain-only ("the minimum height is in the world frame"). On the
+    ramp terrain the uphill columns spawn at the bottom of an inverted
+    pyramid — absolute root z 0.30-0.39 m against a 0.6 m threshold —
+    so a perfectly upright robot was terminated at every reset (spawn
+    audit: exactly the up10+up12 envs, 21 of them, every step).
+
+    Base-above-feet is terrain-independent and is what "fallen"
+    actually means: standing clearance is ~1.0 m on any slope.
+    """
+    import torch
+    robot = env.scene["robot"]
+    if not hasattr(env, "_feet_idx_cache"):
+        env._feet_idx_cache = [robot.body_names.index(n)
+                               for n in feet_names]
+    feet_z = robot.data.body_pos_w[:, env._feet_idx_cache, 2]
+    return (robot.data.root_pos_w[:, 2] - feet_z.min(dim=1).values
+            ) < minimum_height

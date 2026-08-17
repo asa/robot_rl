@@ -502,6 +502,15 @@ class LpaWalkingCLFRampEnvCfg(LpaWalkingCLFEnvCfg):
 
         self.commands.traj_ref.path = "lpa_lib/trajectories/ramp_train"
 
+        # Fall detection must be TERRAIN-RELATIVE here: the stock
+        # world-frame height check kills every uphill env at spawn
+        # (they sit at the bottom of an inverted pyramid, absolute
+        # z 0.30-0.39 vs a 0.6 threshold).
+        from isaaclab.managers import TerminationTermCfg as _DoneT
+        self.terminations.base_height = _DoneT(
+            func=mdp.base_height_above_feet,
+            params={"minimum_height": 0.6})
+
         # Slope observation (+1 channel per group): the policy must
         # know which ramp it is on. Resume from a flat checkpoint via
         # scripts/pad_checkpoint_obs.py --extra 1.
