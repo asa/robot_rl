@@ -29,7 +29,8 @@ from isaaclab.terrains.height_field import (
 # COLUMN ORDER the generator assigns, and the event maps
 # terrain_types -> this list by index.
 RAMP_COLUMNS = [
-    ("flat", "lpa_ramp_flat", 0.0),
+    # The proven flat stomp keeper, unmodified (vel_x 0.596).
+    ("flat", "walk_forward", 0.0),
     ("up5", "lpa_ramp_up5", 5.63),
     ("up10", "lpa_ramp_up10", 10.36),
     ("up12", "lpa_ramp_up12", 12.56),
