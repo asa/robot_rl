@@ -246,3 +246,50 @@ def graph_nan_tripwire(env, env_ids, command_name: str):
                 robot.data.default_joint_pos[pids],
                 robot.data.default_joint_vel[pids], env_ids=pids)
             env.episode_length_buf[pids] = env.max_episode_length
+
+
+def ramp_ref_sampler(env, env_ids, command_name: str,
+                     ref_names: list, slope_degs: list):
+    """Pin each env to the reference gait matching ITS terrain slope
+    (tinh-lpa-ramp.5).
+
+    Slope is TERRAIN, not a command: the velocity conditioner cannot
+    tell a +12 deg climb from a -4 deg descent (all the ramp gaits
+    sit at vel_x 0.27-0.35, vel_yaw 0), so the reference is selected
+    EXPLICITLY from `terrain_types` — which, with the ramp generator's
+    one-sub-terrain-per-column layout, is an exact column index.
+
+    Runs on an interval and (re)assigns any env sitting on locomotion
+    (-1), which is the post-reset state — this avoids depending on
+    reset ordering between the event and command managers.
+    """
+    import torch
+
+    cmd = env.command_manager.get_term(command_name)
+    lib = cmd.manager
+    terrain = getattr(env.scene, "terrain", None)
+    types = getattr(terrain, "terrain_types", None)
+    if types is None:
+        return
+
+    if not hasattr(cmd, "_ramp_ref_ids"):
+        cmd._ramp_ref_ids = torch.tensor(
+            [lib.ref_id_of(n) for n in ref_names],
+            dtype=torch.long, device=env.device)
+        cmd._ramp_slope = torch.tensor(
+            [float(d) for d in slope_degs], device=env.device)
+
+    # Per-env slope, for the observation term below.
+    col = types.clamp(max=len(ref_names) - 1).long()
+    cmd._env_slope_deg = cmd._ramp_slope[col]
+
+    need = (cmd.active_ref_id < 0) & (cmd.pending_ref_id
+                                      <= cmd._NO_PENDING)
+    if not need.any():
+        return
+    ids = need.nonzero().flatten()
+    want = cmd._ramp_ref_ids[col[ids]]
+    for r in want.unique():
+        sub = ids[want == r]
+        if len(sub):
+            cmd.set_next_ref(sub, int(r), entry_time=0.0)

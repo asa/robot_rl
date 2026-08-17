@@ -218,3 +218,15 @@ def skill_selector(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
         skill_encoding[cmd.manager.manager_indices[i]] = encoding[cmd.manager.traj_names[i]]
 
     return skill_encoding
+
+def terrain_slope(env, command_name: str = "traj_ref"):
+    """Signed terrain slope (radians) under each env, from the ramp
+    sampler's terrain-column lookup (tinh-lpa-ramp.5). Zeros before
+    the first sampler tick / on flat envs."""
+    import torch
+
+    cmd = env.command_manager.get_term(command_name)
+    v = getattr(cmd, "_env_slope_deg", None)
+    if v is None:
+        return torch.zeros(env.num_envs, 1, device=env.device)
+    return (v * (torch.pi / 180.0)).unsqueeze(-1)

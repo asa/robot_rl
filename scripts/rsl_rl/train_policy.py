@@ -12,7 +12,8 @@ import cli_args
 ENVIRONMENTS = {
     "lpa_walking_clf": "LPA-walking-clf",  # tinh
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh 8.5d
-    "lpa_walking_clf_graphturn": "LPA-walking-clf-graphturn",  # tinh 7.7 retrain
+    "lpa_walking_clf_graphturn": "LPA-walking-clf-graphturn",
+    "lpa_walking_clf_ramp": "LPA-walking-clf-ramp",  # tinh-lpa-ramp.5
     "vanilla": "G1-vanilla-walking",
     "vanilla_ec": "G1-vanilla-walking-ec",
     "lip_clf": "G1-lip-clf",
@@ -38,6 +39,7 @@ EXPERIMENT_NAMES = {
     "lpa_walking_clf": "lpa_walking_clf",  # tinh
     "lpa_walking_clf_skill": "lpa_walking_clf",  # tinh 8.5d (shared exp dir)
     "lpa_walking_clf_graphturn": "lpa_walking_clf",  # tinh 7.7 (shared exp dir)
+    "lpa_walking_clf_ramp": "lpa_walking_clf",  # tinh-lpa-ramp.5 (shared exp dir)
     "vanilla": "vanilla",
     "vanilla_ec": "vanilla",
     "basic": "baseline",

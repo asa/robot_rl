@@ -477,6 +477,55 @@ class LpaWalkingCLFSkillEnvCfg(LpaWalkingCLFEnvCfg):
 
 
 @configclass
+class LpaWalkingCLFRampEnvCfg(LpaWalkingCLFEnvCfg):
+    """Ramp walking (tinh-lpa-ramp.5): sloped terrain + per-env
+    reference selection by slope.
+
+    Slope is TERRAIN, not a command — the velocity conditioner cannot
+    separate the ramp gaits (all vel_x 0.27-0.35, vel_yaw 0), so every
+    env is pinned to the gait matching its terrain column and the
+    signed slope is appended to both obs groups. Built on the plain
+    walking env (NOT the skill/graph envs): ramp is a static
+    condition, no traversal state machine needed.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import ObservationTermCfg as _ObsTerm
+        from .lpa_ramp_terrain import RAMP_COLUMNS, RAMP_TERRAINS_CFG
+
+        # Sloped terrain replaces the flat plane.
+        self.scene.terrain.terrain_type = "generator"
+        self.scene.terrain.terrain_generator = RAMP_TERRAINS_CFG
+        self.scene.terrain.max_init_terrain_level = None
+        self.curriculum.terrain_levels = None
+
+        self.commands.traj_ref.path = "lpa_lib/trajectories/ramp_train"
+
+        # Slope observation (+1 channel per group): the policy must
+        # know which ramp it is on. Resume from a flat checkpoint via
+        # scripts/pad_checkpoint_obs.py --extra 1.
+        for group in (self.observations.policy,
+                      self.observations.critic):
+            group.terrain_slope = _ObsTerm(
+                func=mdp.terrain_slope,
+                params={"command_name": "traj_ref"})
+
+        self.events.ramp_refs = EventTerm(
+            func=mdp.ramp_ref_sampler,
+            mode="interval",
+            interval_range_s=(0.5, 0.5),
+            params={"command_name": "traj_ref",
+                    "ref_names": [r for _, r, _ in RAMP_COLUMNS],
+                    "slope_degs": [d for _, _, d in RAMP_COLUMNS]})
+
+        # A climb needs room: the flat 8 s episode barely covers a
+        # few strides (and was THE bug that broke turn training —
+        # see tinh-lpa-clfrl.7.7.v3).
+        self.episode_length_s = 20.0
+
+
+@configclass
 class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
     """Graph-turn retrain (pendulum9b post-mortem): turning as a
     graph traversal — walk -> handed walk_to_stand -> turn cycle
