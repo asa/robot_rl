@@ -237,8 +237,11 @@ def main():
         # iter ~101066 with ref+physics tripwires silent): guard the
         # wrapper boundary and report exactly which obs columns /
         # envs go non-finite, then clamp so training survives.
-        if args_cli.env_type in ("lpa_walking_clf_graphturn",
-                                 "lpa_walking_clf_ramp"):
+        # ALL LPA envs (not an env-name allowlist — gating these to one
+        # env is exactly why the ramp env rediscovered the same
+        # std-collapse crash). No-ops in healthy training: actions
+        # run 1-4 vs a +-10 clamp, rewards 0.3-3 vs +-1e3.
+        if args_cli.env_type.startswith("lpa_"):
             _orig_step = env.step
 
             def _leaves(o):
@@ -332,8 +335,11 @@ def main():
             # it after EVERY optimizer step (post-step hook — a
             # post-update clamp is too late, the crash is between
             # minibatches).
-            if args_cli.env_type in ("lpa_walking_clf_graphturn",
-                                 "lpa_walking_clf_ramp"):
+            # ALL LPA envs (not an env-name allowlist — gating these to one
+        # env is exactly why the ramp env rediscovered the same
+        # std-collapse crash). No-ops in healthy training: actions
+        # run 1-4 vs a +-10 clamp, rewards 0.3-3 vs +-1e3.
+        if args_cli.env_type.startswith("lpa_"):
                 _pol = runner.alg.policy
                 if hasattr(_pol, "std") and torch.is_tensor(
                         getattr(_pol, "std", None)):
