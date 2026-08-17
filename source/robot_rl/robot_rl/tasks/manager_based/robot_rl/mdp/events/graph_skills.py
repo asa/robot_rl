@@ -283,13 +283,26 @@ def ramp_ref_sampler(env, env_ids, command_name: str,
     col = types.clamp(max=len(ref_names) - 1).long()
     cmd._env_slope_deg = cmd._ramp_slope[col]
 
-    need = (cmd.active_ref_id < 0) & (cmd.pending_ref_id
-                                      <= cmd._NO_PENDING)
+    need = cmd.active_ref_id < 0
     if not need.any():
         return
     ids = need.nonzero().flatten()
     want = cmd._ramp_ref_ids[col[ids]]
-    for r in want.unique():
-        sub = ids[want == r]
-        if len(sub):
-            cmd.set_next_ref(sub, int(r), entry_time=0.0)
+
+    # Assign DIRECTLY, not via set_next_ref: that stages a PENDING
+    # ref which only fires at a hold point, and the ramp gaits are
+    # periodic — their only hold is episode start, exactly when the
+    # command term clears pending. Staged mid-episode it would never
+    # fire (probe: 0/64 assigned). A ramp is a static per-episode
+    # condition, not a spliced traversal, so the handoff machinery
+    # buys nothing here. Mirrors _process_handoffs' bookkeeping.
+    t_now = env.episode_length_buf.float() * env.step_dt
+    cmd.active_ref_id[ids] = want
+    cmd.pending_ref_id[ids] = cmd._NO_PENDING
+    cmd.pending_exit_phase[ids] = -1.0
+    cmd.pending_entry_time[ids] = 0.0
+    cmd.ref_start_time[ids] = t_now[ids]
+    cmd.hold_phi_value[ids] = -1.0
+    cmd.boundaries_crossed[ids] = 0
+    if cmd.manager_type == "library":
+        cmd.manager.invalidate_cache()
