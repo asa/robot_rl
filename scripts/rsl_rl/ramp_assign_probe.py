@@ -48,6 +48,28 @@ zero = torch.zeros(args.num_envs, uenv.action_manager.total_action_dim,
                    device="cuda:0")
 types = uenv.scene.terrain.terrain_types.long()
 want = expect[types.clamp(max=len(RAMP_COLUMNS) - 1)]
+
+# SPAWN AUDIT: absolute root height vs the env origin's terrain
+# height, per column, plus which term fires in the first steps.
+# (ramp2: mean episode length 2.59 steps = terminated at reset.)
+robot = uenv.scene["robot"]
+org = uenv.scene.env_origins
+print("--- spawn audit ---")
+for i, (n, _, d) in enumerate(RAMP_COLUMNS):
+    m = types == i
+    if int(m.sum()):
+        print(f"  col {i} {n:5s} origin_z={float(org[m][:, 2].median()):+.3f}"
+              f" root_z={float(robot.data.root_pos_w[m][:, 2].median()):+.3f}"
+              f" clearance={float((robot.data.root_pos_w[m][:, 2] - org[m][:, 2]).median()):+.3f}")
+tm0 = uenv.termination_manager
+for k in range(4):
+    with torch.inference_mode():
+        env.step(zero)
+    fired = {nm: int(tm0.get_term(nm).sum()) for nm in tm0.active_terms
+             if int(tm0.get_term(nm).sum())}
+    print(f"  step {k}: terms={fired}"
+          f" root_z_med={float(robot.data.root_pos_w[:, 2].median()):+.3f}")
+print("--- end spawn audit ---")
 # Cumulative: envs on steep slopes fall in LOCKSTEP under zero
 # actions, so an end-of-run snapshot can land in the post-reset
 # assignment gap for a whole column at once.
