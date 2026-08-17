@@ -21,6 +21,9 @@ parser.add_argument("--steps", type=int, default=1500)
 parser.add_argument("--num_envs", type=int, default=16)
 parser.add_argument("--yaw-tol", type=float, default=0.45,
                     help="per-sequence |yaw error| bound (rad)")
+parser.add_argument("--episode-s", type=float, default=30.0,
+                    help="episode length for scoring (must exceed a "
+                         "full stop->turn->start traversal)")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 args.headless = True
@@ -43,6 +46,11 @@ from robot_rl.tasks.manager_based.robot_rl.lpa.lpa_walking_clf_env_cfg import (
 
 env_cfg = LpaWalkingCLFGraphTurnEnvCfg()
 env_cfg.scene.num_envs = args.num_envs
+# The gate must OUTLAST a full traversal: stop + turn (turn_periods
+# x cycle) + start is ~7-8 s, vs the 8 s training episode — which is
+# why gt18 showed 116 aborts and zero _STARTING (the sequence never
+# fit inside an episode). Scoring needs complete sequences.
+env_cfg.episode_length_s = args.episode_s
 # Hot sampler: every free-walking env starts a turn sequence quickly.
 env_cfg.events.graph_skills.params["p_turn"] = 0.25
 env = gym.make("LPA-walking-clf-graphturn", cfg=env_cfg)
