@@ -519,6 +519,7 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
         # direction 2026-08-16 after the gt16 folding exploit):
         # segments are choreography — every joint channel x4
         # (Q x16), eased in over 0.3 s.
+        self.commands.traj_ref.anchored_yaw = True
         self.commands.traj_ref.imitation_gain = 4.0
         self.commands.traj_ref.imitation_ease_s = 0.3
         # THE TURN BUG (found 2026-08-17): the sampler's turn timer

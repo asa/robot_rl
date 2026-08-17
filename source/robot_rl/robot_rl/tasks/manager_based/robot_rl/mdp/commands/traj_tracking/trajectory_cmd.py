@@ -177,6 +177,7 @@ class TrajectoryCommand(CommandTerm):
             [i for i, n in enumerate(self.ordered_vel_output_names)
              if n.startswith("joint:")],
             dtype=torch.long, device=self.device)
+        self._anchored_yaw = bool(getattr(cfg, "anchored_yaw", False))
         self._imitation_gain = float(
             getattr(cfg, "imitation_gain", 1.0) or 1.0)
         self._imitation_ease_s = float(
@@ -1034,7 +1035,8 @@ class TrajectoryCommand(CommandTerm):
         # time (t is segment-local here). Zero-yaw segments (stop/
         # start/laser) anchor heading too, which suppresses drift.
         anch = self.active_ref_id >= 0
-        if (anch.any() and self._core_ori_idx is not None
+        if (self._anchored_yaw and anch.any()
+                and self._core_ori_idx is not None
                 and self.manager_type == "library"):
             ids = anch.nonzero().flatten()
             live_yaw = _yaw_of_quat_wxyz(self.ref_poses[ids, 3:7])
@@ -1054,7 +1056,7 @@ class TrajectoryCommand(CommandTerm):
         # class. Gain eases in over imitation_ease_s (vdot is a
         # numeric difference; a step-change would spike it).
         channel_scale = None
-        if self._imitation_gain > 1.0 and anch.any():
+        if self._imitation_gain > 1.0 and bool(anch.any()):
             ids = anch.nonzero().flatten()
             channel_scale = torch.ones(
                 self.num_envs, len(self.ordered_vel_output_names),

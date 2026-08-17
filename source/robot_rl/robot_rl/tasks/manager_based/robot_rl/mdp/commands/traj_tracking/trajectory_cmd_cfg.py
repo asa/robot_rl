@@ -41,3 +41,8 @@ class TrajectoryCommandCfg(CommandTermCfg):
     # imitation_ease_s. 1.0 = off (legacy envs unchanged).
     imitation_gain: float = 1.0
     imitation_ease_s: float = 0.3
+    # Anchored yaw tracking (7.7.v3). Fires on ANY explicit
+    # reference, so it is OFF by default — the laser/skill envs must
+    # keep their original heading-relative behavior. Turn work is
+    # parked (2026-08-17); re-enable per-env when it resumes.
+    anchored_yaw: bool = False
