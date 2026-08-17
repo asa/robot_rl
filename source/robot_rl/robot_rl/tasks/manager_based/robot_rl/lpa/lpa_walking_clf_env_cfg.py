@@ -511,10 +511,14 @@ class LpaWalkingCLFRampEnvCfg(LpaWalkingCLFEnvCfg):
                 func=mdp.terrain_slope,
                 params={"command_name": "traj_ref"})
 
+        # 0.1 s, not 0.5: after every reset an env is briefly on
+        # locomotion (-1), i.e. tracking the FLAT gait while standing
+        # on a ramp. Steep-slope envs reset often early in training,
+        # so that gap is not negligible.
         self.events.ramp_refs = EventTerm(
             func=mdp.ramp_ref_sampler,
             mode="interval",
-            interval_range_s=(0.5, 0.5),
+            interval_range_s=(0.1, 0.1),
             params={"command_name": "traj_ref",
                     "ref_names": [r for _, r, _ in RAMP_COLUMNS],
                     "slope_degs": [d for _, _, d in RAMP_COLUMNS]})

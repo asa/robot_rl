@@ -46,15 +46,28 @@ print("column -> ref_id:", {n: int(expect[i])
 env.get_observations()
 zero = torch.zeros(args.num_envs, uenv.action_manager.total_action_dim,
                    device="cuda:0")
+types = uenv.scene.terrain.terrain_types.long()
+want = expect[types.clamp(max=len(RAMP_COLUMNS) - 1)]
+# Cumulative: envs on steep slopes fall in LOCKSTEP under zero
+# actions, so an end-of-run snapshot can land in the post-reset
+# assignment gap for a whole column at once.
+ever_ok = torch.zeros(args.num_envs, dtype=torch.bool, device="cuda:0")
+steps_assigned = torch.zeros(args.num_envs, device="cuda:0")
+wrong = torch.zeros(args.num_envs, dtype=torch.bool, device="cuda:0")
 for step in range(args.steps):
     with torch.inference_mode():
         env.step(zero)
+    a = cmd.active_ref_id
+    on = a >= 0
+    steps_assigned += on.float()
+    ever_ok |= on & (a == want)
+    wrong |= on & (a != want)
 
-types = uenv.scene.terrain.terrain_types.long()
-want = expect[types.clamp(max=len(RAMP_COLUMNS) - 1)]
 got = cmd.active_ref_id
-assigned = got >= 0
-match = (got == want) & assigned
+assigned = ever_ok
+match = ever_ok & ~wrong
+print(f"assigned-fraction median:"
+      f" {float((steps_assigned / args.steps).median()):.3f}")
 print(f"envs assigned: {int(assigned.sum())}/{args.num_envs}")
 print(f"correct gait:  {int(match.sum())}/{int(assigned.sum())}")
 for i, (n, _, d) in enumerate(RAMP_COLUMNS):
@@ -62,7 +75,9 @@ for i, (n, _, d) in enumerate(RAMP_COLUMNS):
     if int(m.sum()):
         sl = getattr(cmd, "_env_slope_deg", torch.zeros_like(got).float())
         print(f"  col {i} {n:5s} envs={int(m.sum()):3d}"
-              f" ref_ok={int((got[m] == want[m]).sum()):3d}"
+              f" ever_ok={int(ever_ok[m].sum()):3d}"
+              f" wrong={int(wrong[m].sum()):3d}"
+              f" frac={float((steps_assigned[m] / args.steps).median()):.2f}"
               f" slope_obs={float(sl[m].median()):+.2f} (want {d:+.2f})")
 ok = int(assigned.sum()) == args.num_envs and int(match.sum()) == args.num_envs
 print("RAMP-ASSIGN", "PASS" if ok else "FAIL")
