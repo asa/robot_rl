@@ -87,6 +87,8 @@ deltas = []
 durations = []
 aborted = 0
 bad_terms = 0
+term_tally = {}
+_STARTING_ST = 3
 for step in range(args.steps):
     with torch.inference_mode():
         obs, _, _, _ = env.step(policy(obs))
@@ -106,8 +108,11 @@ for step in range(args.steps):
         # An episode RESET mid-turn also looks like an exit (the
         # reset clears graph state) — those are ABORTS, not
         # completed sequences, and their yaw delta is meaningless.
-        ep_now = uenv.episode_length_buf[exited]
-        clean = ep_now > ep_at_entry[exited]
+        # Classify by DESTINATION: reaching _STARTING means the
+        # turn ran its full timer; anything else (back to _FREE via
+        # an episode reset) is an abort. Episode-buffer arithmetic
+        # was the old, unreliable test.
+        clean = st[exited] == _STARTING_ST
         ids_ex = exited.nonzero().flatten()
         d = wrap_to_pi(base_yaw()[exited] - yaw_at_entry[exited])
         dur = (step - step_at_entry[exited]).float()
@@ -120,25 +125,25 @@ for step in range(args.steps):
         seq_count[ids_ex[clean]] += 1
     prev_turning = turning
     tm = uenv.termination_manager
-    for name in ("waist_twist", "runaway"):
-        if name in tm.active_terms:
-            bad_terms += int(tm.get_term(name).sum())
+    # EVERY step (the old per-100-step snapshot under-counted by 100x
+    # and made terminations look nonexistent).
+    for name in tm.active_terms:
+        v = int(tm.get_term(name).sum())
+        if v:
+            term_tally[name] = term_tally.get(name, 0) + v
+            if name in ("waist_twist", "runaway"):
+                bad_terms += v
     if step % 100 == 99:
         # State histogram + per-term forensics (gt16: sequences=0,
         # bad-terms 1558 while training showed those terms at 0).
         hist = torch.bincount(st.clamp(min=0).long(), minlength=5)
-        terms = {}
-        for name in tm.active_terms:
-            v = int(tm.get_term(name).sum())
-            if v:
-                terms[name] = terms.get(name, 0) + v
         print(f"step {step+1}: sequences {int(seq_count.sum())}"
               f" (envs with >=1: {int((seq_count > 0).sum())}/{N})"
               f" bad-terms {bad_terms}"
               f" states[free,stop,turn,start,x]={hist.tolist()}"
               f" active>=0:{int((cmd.active_ref_id >= 0).sum())}"
               f" pending:{int((cmd.pending_ref_id > -2).sum())}"
-              f" terms-now:{terms}")
+              f" terms:{term_tally}")
 
 # Expected magnitude: turn cycle vel_yaw x periods x cycle time.
 turn_periods = env_cfg.events.graph_skills.params.get("turn_periods", 2.0)
@@ -167,5 +172,7 @@ if len(dt):
 else:
     print(f"GRAPH-GATE sequences=0 aborted={aborted}"
           f" envs-covered=0/{N} bad-terms={bad_terms}")
+print(f"GRAPH-GATE terms={term_tally}"
+      f" max_ep_steps={int(uenv.max_episode_length)}")
 print("GRAPH-GATE", "PASS" if (ok_cov and ok_yaw and ok_term) else "FAIL")
 app.close()

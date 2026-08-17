@@ -521,6 +521,16 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
         # (Q x16), eased in over 0.3 s.
         self.commands.traj_ref.imitation_gain = 4.0
         self.commands.traj_ref.imitation_ease_s = 0.3
+        # THE TURN BUG (found 2026-08-17): the sampler's turn timer
+        # is _turn_until = t_now + turn_periods x cycle, with t_now
+        # measured in EPISODE time. A turn needs 4.8 s and only
+        # starts after walking + a stop segment — so inside the 8 s
+        # episode inherited from the walking env, any turn beginning
+        # after t~3.2 s is reset before its timer fires. _STARTING
+        # was never reached in ANY run gt1..gt18: no policy has ever
+        # experienced a COMPLETED turn. 24 s fits walk + stop + turn
+        # + start with room for a second sequence.
+        self.episode_length_s = 24.0
         self.terminations.waist_twist = _DoneTerm(
             func=mdp.waist_twist, params={"limit": 2.2})
         # GRADED waist penalty (gt16 instrumented gate: 1-3 envs hit
