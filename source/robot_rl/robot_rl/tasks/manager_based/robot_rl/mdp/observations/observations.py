@@ -230,3 +230,35 @@ def terrain_slope(env, command_name: str = "traj_ref"):
     if v is None:
         return torch.zeros(env.num_envs, 1, device=env.device)
     return (v * (torch.pi / 180.0)).unsqueeze(-1)
+
+
+def ground_climb(env, command_name: str = "traj_ref",
+                 cap: float = 0.05):
+    """Reward REALIZED climb: per-step gain in stance-foot ground
+    height, signed by the terrain slope (tinh-lpa-ramp.6).
+
+    The CLF cannot express this — both sides re-anchor to the stance
+    frame at every domain, so altitude error never accumulates (the
+    same per-domain-reset leak that broke turning, in z instead of
+    yaw). This term pays for exactly what the climb gate measures:
+    stance-foot height moving WITH the slope. Zero on flat, zero
+    across resets, per-step delta capped against teleports.
+    """
+    import torch
+
+    robot = env.scene["robot"]
+    if not hasattr(env, "_gc_feet_idx"):
+        env._gc_feet_idx = [robot.body_names.index(n)
+                            for n in ("L_ANKLE", "R_ANKLE")]
+        env._gc_prev = robot.data.body_pos_w[
+            :, env._gc_feet_idx, 2].min(dim=1).values.clone()
+    g = robot.data.body_pos_w[:, env._gc_feet_idx, 2].min(dim=1).values
+    d = (g - env._gc_prev).clamp(-cap, cap)
+    env._gc_prev = g.clone()
+    cmd = env.command_manager.get_term(command_name)
+    slope = getattr(cmd, "_env_slope_deg", None)
+    if slope is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    direction = torch.sign(slope)
+    fresh = env.episode_length_buf <= 1
+    return torch.where(fresh, torch.zeros_like(d), d * direction)

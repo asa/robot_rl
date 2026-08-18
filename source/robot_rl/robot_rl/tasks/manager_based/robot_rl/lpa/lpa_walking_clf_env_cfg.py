@@ -524,6 +524,18 @@ class LpaWalkingCLFRampEnvCfg(LpaWalkingCLFEnvCfg):
         # locomotion (-1), i.e. tracking the FLAT gait while standing
         # on a ramp. Steep-slope envs reset often early in training,
         # so that gap is not negligible.
+        # CLIMB REWARD: pay for stance-foot ground-height gain in
+        # the slope's direction — the quantity the climb gate
+        # measures and the one thing the CLF structurally cannot
+        # (per-domain re-anchoring wipes altitude error each step;
+        # the turn arc's leak, in z). At 0.05 cap and 50 Hz this
+        # tops out ~= the progress term's scale.
+        from isaaclab.managers import RewardTermCfg as _RewT
+        self.rewards.ground_climb = _RewT(
+            func=mdp.ground_climb,
+            weight=40.0,
+            params={"command_name": "traj_ref"})
+
         self.events.ramp_refs = EventTerm(
             func=mdp.ramp_ref_sampler,
             mode="interval",
