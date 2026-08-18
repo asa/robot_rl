@@ -31,33 +31,34 @@ from isaaclab.terrains.height_field.utils import height_field_to_mesh
 from isaaclab.utils import configclass
 
 
-@configclass
-class HfInclinedPlaneCfg(HfTerrainBaseCfg):
-    """A constant-slope plane: height rises along +x by `slope`
-    (a ratio, i.e. tan(theta)). Negative slope descends along +x.
-    Unlike the pyramid terrains the fall line is the SAME direction
-    everywhere, so 'walk forward' means 'walk up the ramp'."""
-
-    function = None      # set below (configclass needs the attr)
-    slope: float = 0.0
-    flat_start: float = 1.5
-    """Flat run-in at the low-x edge so the robot can stand up and
-    reach gait speed before the incline starts."""
-
-
 @height_field_to_mesh
-def inclined_plane(difficulty: float, cfg: HfInclinedPlaneCfg) -> np.ndarray:
+def inclined_plane(difficulty: float, cfg) -> np.ndarray:
+    """Constant-slope plane rising along +x (slope is a ratio =
+    tan(theta); negative descends). Flat run-in at the low-x edge,
+    zeroed at the patch centre so env origins sit on the surface."""
     w = int(cfg.size[0] / cfg.horizontal_scale)
     l = int(cfg.size[1] / cfg.horizontal_scale)
     x = np.arange(w) * cfg.horizontal_scale
-    run = np.clip(x - cfg.flat_start, 0.0, None)      # flat, then ramp
+    run = np.clip(x - cfg.flat_start, 0.0, None)
     h = (cfg.slope * run) / cfg.vertical_scale
-    # Zero the spawn (patch centre) so env origins sit on the surface.
     h = h - h[w // 2]
     return np.tile(h[:, None], (1, l)).astype(np.int16)
 
 
-HfInclinedPlaneCfg.function = inclined_plane
+@configclass
+class HfInclinedPlaneCfg(HfTerrainBaseCfg):
+    """A constant-slope plane. Unlike the pyramid terrains the fall
+    line is the SAME direction everywhere (+x), so 'walk forward'
+    means 'walk up the ramp'.
+
+    NOTE: `function` must be declared in the CLASS BODY — assigning
+    it after @configclass leaves the dataclass default at None and
+    the generator raises 'NoneType is not callable'.
+    """
+
+    function = inclined_plane
+    slope: float = 0.0
+    flat_start: float = 1.5
 
 
 # (column name, reference gait name, signed degrees) — ORDER IS THE
