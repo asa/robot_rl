@@ -532,6 +532,13 @@ class LpaWalkingCLFRampEnvCfg(LpaWalkingCLFEnvCfg):
                     "ref_names": [r for _, r, _ in RAMP_COLUMNS],
                     "slope_degs": [d for _, _, d in RAMP_COLUMNS]})
 
+        # Face UP THE FALL LINE. The inclined plane rises along +x,
+        # and the reference gaits walk straight forward; with heading
+        # randomised the robot traverses the slope instead of
+        # climbing it (that, plus radial pyramid terrain, is why the
+        # first ramp policy walked 10 m and gained ~0 m).
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+
         # A climb needs room: the flat 8 s episode barely covers a
         # few strides (and was THE bug that broke turn training —
         # see tinh-lpa-clfrl.7.7.v3).
