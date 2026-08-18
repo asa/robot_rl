@@ -538,6 +538,18 @@ class LpaWalkingCLFRampEnvCfg(LpaWalkingCLFEnvCfg):
         # climbing it (that, plus radial pyramid terrain, is why the
         # first ramp policy walked 10 m and gained ~0 m).
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        # ...and heading control must apply to EVERY env. The
+        # inherited mode split (open_loop 0.2 / closed 0.5 /
+        # closed_yaw 0.25 / standing 0.05) leaves half the
+        # population free to drift, and on a slope downhill is the
+        # path of least resistance — the 800-iter A/B showed climb
+        # ratios DEGRADING (up12 -0.56 -> -0.74) while distance
+        # improved: the policy was learning to walk DOWN the ramps.
+        self.commands.base_velocity.rel_open_loop = 0.0
+        self.commands.base_velocity.rel_closed_loop = 1.0
+        self.commands.base_velocity.rel_closed_loop_yaw = 0.0
+        self.commands.base_velocity.rel_standing_envs = 0.0
+        self.commands.base_velocity.ranges.y_pos_offset = (0.0, 0.0)
 
         # Chase camera: on 40 m ramp patches a world-fixed viewer
         # renders the robot a few pixels tall, which makes the 6-up
