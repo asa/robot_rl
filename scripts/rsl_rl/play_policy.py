@@ -525,8 +525,13 @@ def main():
                 env.unwrapped.sim.set_camera_view(
                     (_cam[0] + 6.0, _cam[1] + 6.0, _cam[2] + 2.5),
                     (_cam[0], _cam[1], _cam[2] - 0.2))
-            except Exception:
-                pass
+            except Exception as _cam_exc:
+                # Never swallow this silently again: a typo'd attr
+                # here cost three blind render passes (robot out of
+                # frame, no error anywhere).
+                if "_cam_warned" not in dir():
+                    _cam_warned = True
+                    print(f"[camera] follow failed: {type(_cam_exc).__name__}: {_cam_exc}")
             
             # Log data
             if args_cli.log_data:
