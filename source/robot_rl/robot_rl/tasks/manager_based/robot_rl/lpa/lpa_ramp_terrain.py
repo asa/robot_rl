@@ -84,10 +84,15 @@ def _sub(deg: float):
     )
 
 
+# Patches must be LONGER than an episode's travel. At 0.6 m/s for
+# 20 s the robot covers ~12 m; on a 10 m patch it reached the edge
+# every episode, where the ramp meets its neighbour as a ~2 m CLIFF
+# (the 6-up showed terraced plateaus and walls, not ramps). 40 m of
+# run in x from a centre spawn leaves ~8 m of margin.
 RAMP_TERRAINS_CFG = TerrainGeneratorCfg(
-    size=(10.0, 10.0),
-    border_width=5.0,
-    num_rows=5,        # replicas; difficulty is inert (fixed slopes)
+    size=(40.0, 16.0),
+    border_width=8.0,
+    num_rows=3,        # replicas; difficulty is inert (fixed slopes)
     num_cols=len(RAMP_COLUMNS),
     horizontal_scale=0.1,
     vertical_scale=0.005,
