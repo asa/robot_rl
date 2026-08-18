@@ -539,6 +539,15 @@ class LpaWalkingCLFRampEnvCfg(LpaWalkingCLFEnvCfg):
         # first ramp policy walked 10 m and gained ~0 m).
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
 
+        # Chase camera: on 40 m ramp patches a world-fixed viewer
+        # renders the robot a few pixels tall, which makes the 6-up
+        # useless for judging gait.
+        self.viewer.origin_type = "asset_root"
+        self.viewer.asset_name = "robot"
+        self.viewer.env_index = 0
+        self.viewer.eye = (5.0, 5.0, 2.5)
+        self.viewer.lookat = (0.0, 0.0, 0.8)
+
         # A climb needs room: the flat 8 s episode barely covers a
         # few strides (and was THE bug that broke turn training —
         # see tinh-lpa-clfrl.7.7.v3).
