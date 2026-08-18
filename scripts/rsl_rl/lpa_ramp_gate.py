@@ -65,26 +65,32 @@ N = args.num_envs
 ret = env.get_observations()
 obs = ret[0] if isinstance(ret, tuple) else ret
 
-# Accumulate motion ONLY over UPRIGHT steps.
+# Climb is measured at the FEET, not the base.
 #
-# v1 counted the ~0.7 m base drop of every fall as downward travel
-# while (correctly) excluding the reset teleport back up, so dz was
-# just -0.7 x n_falls: the FLAT column read -3.5 m, which is
-# physically impossible and exposed the bug. Climb must be measured
-# where the robot is actually walking.
+# Two earlier metrics failed because the BASE moves with posture:
+# v1 counted each fall's base drop as travel (flat column read
+# -3.5 m); v2 filtered on uprightness but the robot crouches 57% of
+# the time and the sag leaked through (flat read -0.58 m). The
+# stance foot is ON the terrain, so its height IS ground height —
+# immune to crouching, sagging, and falls alike. A flat column must
+# now read ~0 by construction; that is the check that this metric
+# is honest.
 feet_idx = [robot.body_names.index(n) for n in ("L_ANKLE", "R_ANKLE")]
 
-def upright_clearance():
-    fz = robot.data.body_pos_w[:, feet_idx, 2].min(dim=1).values
-    return robot.data.root_pos_w[:, 2] - fz
+def ground_z():
+    # stance foot = the lower one = the ground under the robot
+    return robot.data.body_pos_w[:, feet_idx, 2].min(dim=1).values
 
-prev = robot.data.root_pos_w.clone()
+def base_clearance():
+    return robot.data.root_pos_w[:, 2] - ground_z()
+
+prev_g = ground_z().clone()
+prev_xy = robot.data.root_pos_w[:, :2].clone()
 sum_dz = torch.zeros(N, device="cuda:0")
 sum_dr = torch.zeros(N, device="cuda:0")
 n_up = torch.zeros(N, device="cuda:0")
 falls = torch.zeros(N, device="cuda:0")
 prev_fall = torch.zeros(N, dtype=torch.bool, device="cuda:0")
-ep_lens = []
 tm = uenv.termination_manager
 
 for step in range(args.steps):
@@ -92,18 +98,19 @@ for step in range(args.steps):
         obs, _, _, _ = env.step(policy(obs))
     if "base_height" in tm.active_terms:
         f = tm.get_term("base_height").bool()
-        falls += (f & ~prev_fall).float()      # rising EDGE only
+        falls += (f & ~prev_fall).float()
         prev_fall = f
-    cur = robot.data.root_pos_w
-    moved = cur - prev
-    fresh = uenv.episode_length_buf <= 1
-    # Healthy stance: well clear of the 0.6 fall threshold.
-    ok = (upright_clearance() > 0.85) & ~fresh
-    sum_dz += torch.where(ok, moved[:, 2], torch.zeros_like(moved[:, 2]))
-    sum_dr += torch.where(ok, moved[:, :2].norm(dim=1),
-                          torch.zeros_like(moved[:, 2]))
-    n_up += ok.float()
-    prev = cur.clone()
+    g = ground_z()
+    xy = robot.data.root_pos_w[:, :2]
+    fresh = uenv.episode_length_buf <= 1          # reset teleport
+    z = torch.where(fresh, torch.zeros_like(g), g - prev_g)
+    r = torch.where(fresh, torch.zeros_like(g),
+                    (xy - prev_xy).norm(dim=1))
+    sum_dz += z
+    sum_dr += r
+    n_up += (base_clearance() > 0.85).float()
+    prev_g = g.clone()
+    prev_xy = xy.clone()
 
 dz = sum_dz
 dr = sum_dr
