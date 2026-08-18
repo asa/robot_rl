@@ -149,6 +149,11 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--follow-col", type=int, default=-1,
+        help="camera follows the first env on this terrain column "
+             "(-1 = median of all robots; spread terrains need this)")
+
+    parser.add_argument(
         "--play_log_dir",
         type=str,
         default = None,
@@ -495,7 +500,23 @@ def main():
             # target, EMA-smoothed every step so the camera glides.
             try:
                 _robot = env.unwrapped.scene.articulations["robot"]
-                _c = _robot.data.root_pos_w.median(dim=0).values
+                # --follow-col picks ONE env by terrain column and
+                # tracks its robot; the median-of-all default frames
+                # nothing on spread terrains (ramp patches are 40 m —
+                # the centroid is empty ground between robots).
+                if "_follow_idx" not in dir():
+                    _follow_idx = -1
+                    if args_cli.follow_col >= 0:
+                        _ty = env.unwrapped.scene.terrain.terrain_types
+                        _hit = (_ty == args_cli.follow_col).nonzero()
+                        if len(_hit):
+                            _follow_idx = int(_hit.flatten()[0])
+                            print(f"[camera] following env {_follow_idx}"
+                                  f" (terrain col {args_cli.follow_col})")
+                if _follow_idx >= 0:
+                    _c = _robot.data.root_pos_w[_follow_idx]
+                else:
+                    _c = _robot.data.root_pos_w.median(dim=0).values
                 _t = (float(_c[0]), float(_c[1]), float(_c[2]))
                 if "_cam" not in dir():
                     _cam = list(_t)
