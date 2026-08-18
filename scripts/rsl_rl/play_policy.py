@@ -24,6 +24,7 @@ SIM_ENVIRONMENTS = {
     # expects).
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh
     "lpa_walking_clf_graphturn": "LPA-walking-clf-graphturn",  # tinh
+    "lpa_walking_clf_ramp": "LPA-walking-clf-ramp",  # tinh-lpa-ramp.5
 
     "vanilla": "G1-vanilla-walking",
     "lip_clf": "G1-lip-ref-play",
