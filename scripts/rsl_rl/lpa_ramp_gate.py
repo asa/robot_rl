@@ -65,30 +65,49 @@ N = args.num_envs
 ret = env.get_observations()
 obs = ret[0] if isinstance(ret, tuple) else ret
 
-# Accumulate TRUE per-step motion; a reset teleports the robot, so
-# steps spanning a reset contribute nothing (episode_length_buf <= 1).
+# Accumulate motion ONLY over UPRIGHT steps.
+#
+# v1 counted the ~0.7 m base drop of every fall as downward travel
+# while (correctly) excluding the reset teleport back up, so dz was
+# just -0.7 x n_falls: the FLAT column read -3.5 m, which is
+# physically impossible and exposed the bug. Climb must be measured
+# where the robot is actually walking.
+feet_idx = [robot.body_names.index(n) for n in ("L_ANKLE", "R_ANKLE")]
+
+def upright_clearance():
+    fz = robot.data.body_pos_w[:, feet_idx, 2].min(dim=1).values
+    return robot.data.root_pos_w[:, 2] - fz
+
 prev = robot.data.root_pos_w.clone()
 sum_dz = torch.zeros(N, device="cuda:0")
 sum_dr = torch.zeros(N, device="cuda:0")
+n_up = torch.zeros(N, device="cuda:0")
 falls = torch.zeros(N, device="cuda:0")
+prev_fall = torch.zeros(N, dtype=torch.bool, device="cuda:0")
+ep_lens = []
 tm = uenv.termination_manager
 
 for step in range(args.steps):
     with torch.inference_mode():
         obs, _, _, _ = env.step(policy(obs))
     if "base_height" in tm.active_terms:
-        falls += tm.get_term("base_height").float()
+        f = tm.get_term("base_height").bool()
+        falls += (f & ~prev_fall).float()      # rising EDGE only
+        prev_fall = f
     cur = robot.data.root_pos_w
     moved = cur - prev
     fresh = uenv.episode_length_buf <= 1
-    z = torch.where(fresh, torch.zeros_like(moved[:, 2]), moved[:, 2])
-    r = torch.where(fresh, torch.zeros_like(z), moved[:, :2].norm(dim=1))
-    sum_dz += z
-    sum_dr += r
+    # Healthy stance: well clear of the 0.6 fall threshold.
+    ok = (upright_clearance() > 0.85) & ~fresh
+    sum_dz += torch.where(ok, moved[:, 2], torch.zeros_like(moved[:, 2]))
+    sum_dr += torch.where(ok, moved[:, :2].norm(dim=1),
+                          torch.zeros_like(moved[:, 2]))
+    n_up += ok.float()
     prev = cur.clone()
 
 dz = sum_dz
 dr = sum_dr
+print(f"upright-step fraction: {float((n_up / args.steps).median()):.2f}")
 
 print(f"{'col':<6} {'envs':>4} {'dz':>7} {'want':>7} {'ratio':>6} "
       f"{'dist':>6} {'falls':>6}")
