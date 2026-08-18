@@ -88,6 +88,15 @@ WALKING_Q_weights["joint:TORSO_ROLL"] = [4.0, 2.0]
 # ANKLE FLIP is a velocity-shaped event (toe-off/heel-strike snaps).
 for _j in ("L_ANKLE", "R_ANKLE"):
     WALKING_Q_weights[f"joint:{_j}"] = [4.0, 8.0]
+# WAIST GUARD (2026-08-18, third recurrence of the twist exploit):
+# the yaw_vel reward pays for commanded yaw rate, the reference
+# cannot turn, and the cheapest fake yaw-rate is the waist. The
+# guard trio (this weight + waist_twist fence + waist_quiet penalty
+# in the BASE cfg below) was validated across gt15-gt18 — fence
+# never fired, penalty ~-0.04 — and belongs to EVERY LPA env, not
+# an env-name allowlist. It was graphturn-only while the ramp env
+# re-discovered the exploit under 100% heading control.
+WALKING_Q_weights["joint:WAIST_YAW"] = [8.0, 4.0]
 
 
 ##
@@ -404,6 +413,19 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
         self.observations.policy.height_scan = None
         self.curriculum.terrain_levels = None
 
+        # Waist guard trio, base-level (see WALKING_Q_weights note).
+        from isaaclab.managers import TerminationTermCfg as _DoneT
+        from isaaclab.managers import RewardTermCfg as _RewT
+        from isaaclab.managers import SceneEntityCfg as _SceneC
+        import isaaclab.envs.mdp as _ilmdp
+        self.terminations.waist_twist = _DoneT(
+            func=mdp.waist_twist, params={"limit": 2.2})
+        self.rewards.waist_quiet = _RewT(
+            func=_ilmdp.joint_deviation_l1,
+            weight=-1.5,
+            params={"asset_cfg": _SceneC(
+                "robot", joint_names=["WAIST_YAW"])})
+
 
 @configclass
 class LpaWalkingCLFEnvCfg_PLAY(LpaWalkingCLFEnvCfg):
@@ -614,9 +636,8 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
         # as the shoulder pump fix (2026-08-02): style channel up,
         # plus a hard termination far outside honest tracking
         # (references keep the waist within ~0.3 rad).
-        self.commands.traj_ref.Q_weights = dict(
-            self.commands.traj_ref.Q_weights)
-        self.commands.traj_ref.Q_weights["joint:WAIST_YAW"] = [8.0, 4.0]
+        # Waist guards now live in the BASE cfg (Q table + fence +
+        # penalty) — nothing graphturn-specific remains here.
         # Full-body imitation during explicit segments (user
         # direction 2026-08-16 after the gt16 folding exploit):
         # segments are choreography — every joint channel x4
@@ -634,8 +655,7 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
         # experienced a COMPLETED turn. 24 s fits walk + stop + turn
         # + start with room for a second sequence.
         self.episode_length_s = 24.0
-        self.terminations.waist_twist = _DoneTerm(
-            func=mdp.waist_twist, params={"limit": 2.2})
+
         # GRADED waist penalty (gt16 instrumented gate: 1-3 envs hit
         # the 2.2 fence EVERY step under turn demand — death gives
         # avoidance, not guidance). Continuous gradient toward the
