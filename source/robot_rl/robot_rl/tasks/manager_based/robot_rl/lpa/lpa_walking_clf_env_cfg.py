@@ -546,6 +546,17 @@ class LpaWalkingCLFRampEnvCfg(LpaWalkingCLFEnvCfg):
         # locomotion (-1), i.e. tracking the FLAT gait while standing
         # on a ramp. Steep-slope envs reset often early in training,
         # so that gap is not negligible.
+        # FRICTION FLOOR: the inherited randomization spans down to
+        # mu 0.3 — fine on flat, disqualifying on a 12.6 deg slope
+        # (tan 0.22): push-off shear exceeds static grip, so
+        # low-draw envs physically cannot climb and the policy
+        # learns climbing is a lottery (ramp4: up-ratios REGRESSED
+        # over a full run while flats/downs flourished).
+        self.events.randomize_ground_contact_friction.params[
+            "static_friction_range"] = (0.7, 1.6)
+        self.events.randomize_ground_contact_friction.params[
+            "dynamic_friction_range"] = (0.6, 1.2)
+
         # CLIMB REWARD: pay for stance-foot ground-height gain in
         # the slope's direction — the quantity the climb gate
         # measures and the one thing the CLF structurally cannot
