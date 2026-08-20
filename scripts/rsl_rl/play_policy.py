@@ -141,6 +141,17 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--speed-ladder", type=str, default=None,
+        help="comma list of forward speeds; ALL envs step through "
+             "them together (first stage = standing hold, last "
+             "stage runs to the end of the video)")
+    parser.add_argument(
+        "--ladder-stand-steps", type=int, default=100,
+        help="sim steps to hold the first (standing) stage")
+    parser.add_argument(
+        "--ladder-stage-steps", type=int, default=70,
+        help="sim steps per intermediate stage (~3 strides)")
+    parser.add_argument(
         "--speed_spread",
         action="store_true",
         default=False,
@@ -463,6 +474,29 @@ def main():
     timestep = 0
     print("[DEBUG] Starting simulation loop")
 
+    ladder = None
+    if args_cli.speed_ladder:
+        ladder = [float(v) for v in args_cli.speed_ladder.split(",")]
+        print(f"[DEBUG] speed ladder: {ladder} "
+              f"(stand {args_cli.ladder_stand_steps}, "
+              f"stage {args_cli.ladder_stage_steps} steps)")
+
+    def _apply_ladder(step_i):
+        # Stage 0 holds ladder[0] for ladder_stand_steps, then each
+        # stage runs ladder_stage_steps; the final stage persists.
+        t = step_i - args_cli.ladder_stand_steps
+        idx = 0 if t < 0 else min(1 + t // args_cli.ladder_stage_steps,
+                                  len(ladder) - 1)
+        term = env.unwrapped.command_manager.get_term("base_velocity")
+        term.vel_command_b[:, 0] = ladder[int(idx)]
+        term.vel_command_b[:, 1:] = 0.0
+        if hasattr(term, "is_standing_env"):
+            term.is_standing_env[:] = ladder[int(idx)] == 0.0
+        if hasattr(term, "is_closed_loop_env"):
+            term.is_closed_loop_env[:] = False
+        if hasattr(term, "is_closed_loop_yaw_env"):
+            term.is_closed_loop_yaw_env[:] = False
+
     spread_vx = None
     if args_cli.speed_spread:
         _term = env.unwrapped.command_manager.get_term("base_velocity")
@@ -494,6 +528,8 @@ def main():
 
             if spread_vx is not None:
                 _apply_spread()
+            if ladder is not None:
+                _apply_ladder(timestep)
 
             # tinh: follow the robots as a group. MEDIAN (not mean)
             # so a single episode-reset teleport doesn't yank the
