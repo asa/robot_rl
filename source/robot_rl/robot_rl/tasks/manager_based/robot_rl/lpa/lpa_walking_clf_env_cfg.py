@@ -679,3 +679,38 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
             weight=-1.5,
             params={"asset_cfg": _SceneCfg(
                 "robot", joint_names=["WAIST_YAW"])})
+
+
+@configclass
+class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
+    """Flat-ground walking, trained on MILDLY ROUGH ground for
+    robustness (user 2026-08-21: "handle uneven terrain, even if we
+    are only walking on flat ground").
+
+    Deliberately the plain walking env plus terrain -- no skill slots,
+    no graph sampler, same walk_forward library. That keeps the
+    OBSERVATION LAYOUT identical to the flat walking policy, so this
+    resumes from an existing checkpoint directly with no obs padding,
+    which is the whole reason to keep it this narrow.
+
+    Terrain is the first rung of the standard legged-RL ladder and
+    only its low end (0.01-0.05 m noise, 30% flat in the mix). See
+    lpa_rough_terrain for why the slope/stair/obstacle rungs are NOT
+    here: slopes have their own env, and stairs are a behaviour rather
+    than free robustness.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from .lpa_rough_terrain import ROUGH_TERRAINS_CFG
+
+        self.scene.terrain.terrain_type = "generator"
+        self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
+
+        # Terrain-relative fall detection. The stock check is
+        # world-frame and misreads a robot standing in a dip -- the
+        # same failure that killed every uphill env in the ramp work.
+        from isaaclab.managers import TerminationTermCfg as _DoneT
+        self.terminations.base_height = _DoneT(
+            func=mdp.base_height_above_feet,
+            params={"minimum_height": 0.6})
