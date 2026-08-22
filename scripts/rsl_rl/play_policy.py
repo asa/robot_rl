@@ -25,6 +25,11 @@ SIM_ENVIRONMENTS = {
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh
     "lpa_walking_clf_graphturn": "LPA-walking-clf-graphturn",  # tinh
     "lpa_walking_clf_ramp": "LPA-walking-clf-ramp",  # tinh-lpa-ramp.5
+    # No play variant; play the TRAIN cfg so the terrain generator is
+    # active on camera. Registering an env in train_policy is NOT
+    # enough -- play_policy keeps its own map, and a miss here is a
+    # KeyError at play time, long after training has finished.
+    "lpa_walking_clf_rough": "LPA-walking-clf-rough",
 
     "vanilla": "G1-vanilla-walking",
     "lip_clf": "G1-lip-ref-play",
