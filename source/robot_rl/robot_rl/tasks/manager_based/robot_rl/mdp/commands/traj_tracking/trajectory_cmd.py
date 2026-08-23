@@ -208,6 +208,11 @@ class TrajectoryCommand(CommandTerm):
         # landing. Zero when the gate is off, so nothing changes.
         self.contact_phase_offset = torch.zeros(self.num_envs, device=self.device)
         self._contact_hold_elapsed = torch.zeros(self.num_envs, device=self.device)
+        # Effective clock RATE alpha = d(t_eff)/d(t_real). The desired
+        # VELOCITY must be scaled by it or the reference is frozen in
+        # position while still moving at full speed -- see
+        # get_desired_outputs. 1.0 = nominal, 0.0 = held.
+        self.contact_phase_rate = torch.ones(self.num_envs, device=self.device)
 
     def _measured_contact(self) -> torch.Tensor:
         """Per-contact-frame boolean, matching how the contact rewards
@@ -249,6 +254,9 @@ class TrajectoryCommand(CommandTerm):
         self._contact_hold_elapsed = torch.where(
             fresh, torch.zeros_like(self._contact_hold_elapsed),
             self._contact_hold_elapsed)
+        self.contact_phase_rate = torch.where(
+            fresh, torch.ones_like(self.contact_phase_rate),
+            self.contact_phase_rate)
 
         expected = self.get_contact_state(t_nominal, None) > 0.5
         measured = self._measured_contact()
@@ -272,6 +280,30 @@ class TrajectoryCommand(CommandTerm):
                 catching,
                 self.contact_phase_offset - dt * self.cfg.contact_gate_catchup,
                 self.contact_phase_offset)
+
+        # alpha = d(t_eff)/d(t_real) = 1 - d(offset)/d(t_real).
+        # Held -> 0 (the reference is standing still in real time);
+        # catching up -> 1 + catchup; otherwise 1. This is the chain
+        # rule for y_des(t_eff(t_real)), and WITHOUT IT the velocity
+        # half of the CLF error stays at full nominal magnitude
+        # against a robot that is near-static waiting for ground --
+        # so the gate would remove the position error and leave the
+        # velocity error, fixing half the problem and muddying the
+        # other half.
+        alpha = torch.ones_like(self.contact_phase_offset)
+        alpha = torch.where(holding, torch.zeros_like(alpha), alpha)
+        if self.cfg.contact_gate_catchup > 0:
+            alpha = torch.where(
+                early & ~holding,
+                torch.full_like(alpha, 1.0 + self.cfg.contact_gate_catchup),
+                alpha)
+        # A clamped offset is no longer moving, so the rate is nominal
+        # again even though the branch fired.
+        at_ceiling = self.contact_phase_offset >= self.cfg.contact_gate_max_hold_s
+        at_floor = self.contact_phase_offset <= -self.cfg.contact_gate_max_lead_s
+        alpha = torch.where(holding & at_ceiling, torch.ones_like(alpha), alpha)
+        alpha = torch.where(early & at_floor, torch.ones_like(alpha), alpha)
+        self.contact_phase_rate = alpha
 
         self.contact_phase_offset.clamp_(
             min=-self.cfg.contact_gate_max_lead_s,
@@ -849,6 +881,14 @@ class TrajectoryCommand(CommandTerm):
         # vel_outputs: [N, num_vel_outputs] excludes ori_w
         y_pos, y_vel = self.manager.get_output(t, env_ids)
 
+        # Chain rule for the contact-gated clock: y_des is evaluated at
+        # t_eff, so its time derivative w.r.t. REAL time carries the
+        # factor alpha = d(t_eff)/d(t_real).
+        if self.cfg.contact_gate:
+            rate = (self.contact_phase_rate if env_ids is None
+                    else self.contact_phase_rate[env_ids])
+            y_vel = y_vel * rate.unsqueeze(-1)
+
         # Apply optional heuristic modification
         # TODO: Put back and fix for quat and global orientation
         if self.user_heuristic is not None:
@@ -1049,6 +1089,7 @@ class TrajectoryCommand(CommandTerm):
             # desynced from its own reference.
             self.contact_phase_offset[ids] = 0.0
             self._contact_hold_elapsed[ids] = 0.0
+            self.contact_phase_rate[ids] = 1.0
             self.anchor_yaw_act[ids] = 0.0
             if hasattr(self, "_graph_state"):
                 self._graph_state[ids] = 0
