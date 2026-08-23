@@ -143,6 +143,23 @@ def main() -> int:
         return 1
 
     sd[key] = w_new
+
+    # Adam keeps exp_avg / exp_avg_sq shaped like the parameter, so
+    # leaving them at the old width fails at load with a bare
+    # "size of tensor a (74) must match tensor b (350)" that names
+    # nothing. Remap them the same way: momentum is preserved for the
+    # columns that already existed, and the new history columns start
+    # from zero, which is what a fresh input deserves.
+    opt = ckpt.get("optimizer_state_dict")
+    moved = 0
+    if isinstance(opt, dict):
+        for _pid, st in (opt.get("state") or {}).items():
+            for mk, mv in list(st.items()):
+                if hasattr(mv, "shape") and tuple(mv.shape) == tuple(w_old.shape):
+                    st[mk] = remap_first_layer(mv, mapping, new_width)
+                    moved += 1
+    print(f"optimizer buffers remapped: {moved}")
+
     torch.save(ckpt, args.dst)
     print(f"wrote {args.dst}")
     return 0
