@@ -1,8 +1,11 @@
 """Pin the contact gate's semantics — especially the two bugs the
 first versions shipped with.
 
-Runs without Isaac: `python -m pytest test_contact_gate.py` in the
-robot_rl venv, milliseconds.
+Runs without Isaac, in milliseconds — but ONLY from this directory
+with conftest discovery cut, because the repo's parent conftests pull
+in Isaac fixtures that error at setup:
+
+    cd .../traj_tracking && python -m pytest test_contact_gate.py --confcutdir=.
 """
 
 import os
