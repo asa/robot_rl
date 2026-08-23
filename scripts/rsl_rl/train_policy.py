@@ -15,6 +15,9 @@ ENVIRONMENTS = {
     "lpa_walking_clf_graphturn": "LPA-walking-clf-graphturn",
     "lpa_walking_clf_ramp": "LPA-walking-clf-ramp",  # tinh-lpa-ramp.5
     "lpa_walking_clf_rough": "LPA-walking-clf-rough",  # terrain robustness
+    # Flat + obs history: the play/export env for history policies,
+    # which cannot load into the 74-obs plain flat env.
+    "lpa_walking_clf_hist": "LPA-walking-clf-hist",
     "vanilla": "G1-vanilla-walking",
     "vanilla_ec": "G1-vanilla-walking-ec",
     "lip_clf": "G1-lip-clf",
@@ -42,6 +45,7 @@ EXPERIMENT_NAMES = {
     "lpa_walking_clf_graphturn": "lpa_walking_clf",  # tinh 7.7 (shared exp dir)
     "lpa_walking_clf_ramp": "lpa_walking_clf",  # tinh-lpa-ramp.5 (shared exp dir)
     "lpa_walking_clf_rough": "lpa_walking_clf",  # rough (shared exp dir)
+    "lpa_walking_clf_hist": "lpa_walking_clf",  # hist (shared exp dir)
     "vanilla": "vanilla",
     "vanilla_ec": "vanilla",
     "basic": "baseline",

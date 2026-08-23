@@ -682,6 +682,35 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
 
 
 @configclass
+# Observation history, shared by every env that trains or plays a
+# history policy so the two cannot drift into different widths.
+#
+# 10 frames at our 50 Hz (sim dt 0.005 x decimation 4) = 0.20 s, which
+# is SONIC's own decoder window at the same control rate (NVIDIA GEAR,
+# arXiv 2511.07820). 5 frames was tried first and is too short on two
+# counts: 0.10 s cannot contain a humanoid touchdown->loading->push-off
+# event (stance is ~0.3-0.5 s), and the one direct humanoid ablation
+# (PRIOR, arXiv 2603.18979 Table V) drops 27% between H=10 and H=6.
+#
+# Policy obs 74 -> 640. ACTOR ONLY: CriticCfg subclasses PolicyCfg but
+# holds its own term instances, so the critic keeps its 249-wide
+# privileged view and needs no checkpoint remap.
+#
+# Commands and the phase clock are excluded on purpose -- both are
+# externally supplied and deterministic, so their history is redundant.
+LPA_OBS_HISTORY = 10
+_HISTORY_TERMS = ("base_ang_vel", "projected_gravity", "joint_pos",
+                  "joint_vel", "actions")
+
+
+def apply_obs_history(observations, history: int = LPA_OBS_HISTORY):
+    """Give the POLICY group `history` frames of proprioception."""
+    for name in _HISTORY_TERMS:
+        term = getattr(observations.policy, name, None)
+        if term is not None:
+            term.history_length = history
+
+
 class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
     """Flat-ground walking, trained on MILDLY ROUGH ground for
     robustness (user 2026-08-21: "handle uneven terrain, even if we
@@ -707,47 +736,9 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         self.scene.terrain.terrain_type = "generator"
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
 
-        # OBSERVATION HISTORY (rough1-6 forensics, user 2026-08-23).
-        #
-        # THE finding: every obs term was history_length=1, so the
-        # policy saw a single instantaneous frame. Terrain is then
-        # formally UNOBSERVABLE -- from one instant of proprioception
-        # you cannot tell "the ground rose 2 cm under my left foot"
-        # from "my tracking is off". No reward shaping can recover
-        # information the observation does not contain, which is why
-        # five runs of tuning changed nothing.
-        #
-        # Every blind-locomotion result in the literature feeds a
-        # WINDOW of past proprioception: Lee et al. 2020 (ANYmal,
-        # Science Robotics) use a temporal CNN over ~50 steps;
-        # Radosavovic et al. 2024 (Digit, the closest work to this
-        # one) use a causal transformer over observation-action
-        # history. History is what lets a blind robot infer ground it
-        # cannot see, from how the last few footfalls went.
-        #
-        # Applied to the ACTOR only. The critic already gets
-        # privileged state (base_lin_vel, root_quat, ...), so this is
-        # the standard asymmetric actor-critic split and the critic
-        # needs no checkpoint remap.
-        #
-        # Commands and the phase clock are excluded deliberately:
-        # both are externally supplied and deterministic, so their
-        # history carries nothing.
-        #
-        # Policy obs 74 -> 350. Resuming needs
-        # scripts/expand_obs_history.py, NOT pad_checkpoint_obs.py --
-        # history expands each term IN PLACE rather than appending,
-        # so zero-padding the end would misalign every later weight.
-        # POLICY ONLY. CriticCfg subclasses PolicyCfg but holds its
-        # own term instances, so this leaves the critic at 249 and
-        # needing no remap -- which is the whole point of keeping the
-        # split asymmetric.
-        _HIST = 5
-        for _t in ("base_ang_vel", "projected_gravity", "joint_pos",
-                   "joint_vel", "actions"):
-            _term = getattr(self.observations.policy, _t, None)
-            if _term is not None:
-                _term.history_length = _HIST
+        # Proprioceptive history -- see apply_obs_history above for
+        # why, and why it is the actor only.
+        apply_obs_history(self.observations)
 
         # (The 0.58 -> 0.29 speed reduction was prepared for rough6
         # and pulled back out: observation history is the change
@@ -812,3 +803,29 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         self.terminations.base_height = _DoneT(
             func=mdp.base_height_above_feet,
             params={"minimum_height": 0.6})
+
+
+@configclass
+class LpaWalkingCLFHistEnvCfg(LpaWalkingCLFEnvCfg):
+    """FLAT walking with proprioceptive history — the play/export env
+    for history policies.
+
+    Exists because a history policy cannot be played in the plain
+    flat env at all: it has a 640-wide actor and that env presents
+    74 observations. Without this, a rough-terrain history run has no
+    flat ablation video and no exportable ONNX, and it would surface
+    only at close-out time, hours after training finished — the same
+    shape of failure as the missing SIM_ENVIRONMENTS entry.
+
+    Flat ground on purpose. This is the surface the robot ships on,
+    so it answers "did terrain training cost us anything at rate",
+    which is the question the whole rough programme is judged on.
+
+    The plain `lpa_walking_clf` env stays as it is, because the
+    74-obs pendulum9b baseline still has to play somewhere for the
+    like-for-like comparison.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        apply_obs_history(self.observations)

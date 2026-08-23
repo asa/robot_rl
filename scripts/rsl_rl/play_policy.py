@@ -30,6 +30,10 @@ SIM_ENVIRONMENTS = {
     # enough -- play_policy keeps its own map, and a miss here is a
     # KeyError at play time, long after training has finished.
     "lpa_walking_clf_rough": "LPA-walking-clf-rough",
+    # Flat + history. Registered here at the SAME TIME as in
+    # train_policy: the maps are separate, and a miss is a KeyError
+    # at close-out, hours after training ends.
+    "lpa_walking_clf_hist": "LPA-walking-clf-hist",
 
     "vanilla": "G1-vanilla-walking",
     "lip_clf": "G1-lip-ref-play",
