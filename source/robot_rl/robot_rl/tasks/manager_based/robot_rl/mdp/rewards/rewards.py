@@ -79,6 +79,29 @@ def joint_pos_reward(env: ManagerBasedRLEnv, command_name: str, sigma: float) ->
 
     return torch.exp(-KAPPA * v_joint_pos / sigma)
 
+def joint_pos_group_reward(env: ManagerBasedRLEnv, command_name: str,
+                           sigma: float, group: str) -> torch.Tensor:
+    """joint_pos tracking for ONE limb group: legs / arms / torso.
+
+    The combined term gives every joint a single shared exponential,
+    so a large leg error -- which any uneven ground forces -- drives
+    exp(-KAPPA*V/sigma) toward zero and takes the gradient for ARM
+    tracking with it. The arms then drift to whatever posture helps
+    balance, which is functional but off-style.
+
+    Splitting restores an independent gradient per group. sigma then
+    expresses TOLERANCE (how far a group may deviate before the
+    reward stops caring) and weight expresses PRIORITY (how hard it
+    is pulled back), which is what lets the arms do balance work and
+    still come home. sigma should carry sqrt(n_joints) so the
+    per-joint scale matches the combined term.
+    """
+    cmd_term = env.command_manager.get_term(command_name)
+    v = cmd_term.clf.v_subgroups[f"joint_pos_{group}"]
+
+    return torch.exp(-KAPPA * v / sigma)
+
+
 def joint_vel_reward(env: ManagerBasedRLEnv, command_name: str, sigma: float) -> torch.Tensor:
     cmd_term = env.command_manager.get_term(command_name)
     v_joint_vel = cmd_term.clf.v_subgroups["joint_vel"]

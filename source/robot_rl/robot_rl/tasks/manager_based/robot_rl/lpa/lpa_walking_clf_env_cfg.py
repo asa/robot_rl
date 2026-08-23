@@ -707,6 +707,47 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         self.scene.terrain.terrain_type = "generator"
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
 
+        # SPLIT STYLE REWARD (rough1/2/3 forensics).
+        #
+        # Three runs collapsed to ~50% of their opening style within
+        # ~950 iterations, and terrain amplitude made NO difference:
+        # 5 cm rubble gave 50%, 2 cm smooth undulation gave 51%. What
+        # is invariant is that ANY terrain forces the legs off a
+        # flat-ground reference.
+        #
+        # The combined joint_pos term puts all 21 joints under one
+        # exp(-KAPPA*V/sigma). Once the legs make V large, the
+        # gradient for ARM tracking is suppressed by that same
+        # exponential no matter how mild the ground is -- which is
+        # exactly the amplitude-independence observed. The arms then
+        # settle wherever balance prefers: measured 2.53x position
+        # drift against the legs' 1.87x, worst at SHOULDER_ROLL
+        # (4.1x), the arms-out inertia-widening posture.
+        #
+        # Splitting gives each group its own exponential, so:
+        #   sigma  = TOLERANCE, how far this group may deviate
+        #   weight = PRIORITY, how hard it is pulled back
+        # Arms get a 1.5x wider sigma (0.3 vs 0.2 per joint) so they
+        # are FREE to do angular-momentum work -- that is their job
+        # when the legs are perturbed, and penalising arm motion
+        # would fight the mechanics -- while a substantial weight
+        # still restores the mean pose to style.
+        #
+        # Weights sum to 1.0, the combined term's old weight, so the
+        # overall reward scale is unchanged. The combined term is
+        # switched off; note IsaacLab SKIPS zero-weight terms
+        # entirely, so Episode_Reward/joint_pos will read 0.0 for
+        # this env -- use `style_gate --metric arms` here.
+        self.rewards.joint_pos.weight = 0.0
+        from isaaclab.managers import RewardTermCfg as _RewGrp
+        for _grp, _n, _s, _w in (("legs", 10, 0.2, 0.45),
+                                 ("arms", 8, 0.3, 0.40),
+                                 ("torso", 3, 0.2, 0.15)):
+            setattr(self.rewards, f"joint_pos_{_grp}", _RewGrp(
+                func=mdp.joint_pos_group_reward, weight=_w,
+                params={"command_name": "traj_ref",
+                        "sigma": _s * math.sqrt(_n), "group": _grp}))
+
         # Terrain-relative fall detection. The stock check is
         # world-frame and misreads a robot standing in a dip -- the
         # same failure that killed every uphill env in the ramp work.

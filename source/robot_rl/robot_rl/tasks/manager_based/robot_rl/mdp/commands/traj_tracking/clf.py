@@ -96,6 +96,19 @@ class CLF:
             "pelvis_ang_vel": [],
             "joint_pos": [],
             "joint_vel": [],
+            # The same joints, also bucketed by limb. A single
+            # exp(-KAPPA*V/sigma) over all 21 cannot separate terrain
+            # ADAPTATION from style LOSS: on any uneven ground the
+            # legs must deviate, and because they share one
+            # exponential with the arms, the large leg error also
+            # collapses the gradient toward better arm tracking.
+            # Additive -- "joint_pos" above is unchanged.
+            "joint_pos_legs": [],
+            "joint_vel_legs": [],
+            "joint_pos_arms": [],
+            "joint_vel_arms": [],
+            "joint_pos_torso": [],
+            "joint_vel_torso": [],
             "other_body_pos": [],
             "other_body_lin_vel": [],
             "other_body_ori": [],
@@ -114,6 +127,15 @@ class CLF:
             elif name.startswith("joint:"):
                 pos_key = "joint_pos"
                 vel_key = "joint_vel"
+                jn = name.split("joint:", 1)[1]
+                if "SHOULDER" in jn or "ELBOW" in jn or "WRIST" in jn:
+                    grp = "arms"
+                elif "WAIST" in jn or "TORSO" in jn:
+                    grp = "torso"
+                else:
+                    grp = "legs"
+                subgroup_eta_indices[f"joint_pos_{grp}"].append(2 * i)
+                subgroup_eta_indices[f"joint_vel_{grp}"].append(2 * i + 1)
             elif ":pos_" in name:
                 pos_key = "other_body_pos"
                 vel_key = "other_body_lin_vel"
