@@ -5,9 +5,16 @@ Runs without Isaac: `python -m pytest test_contact_gate.py` in the
 robot_rl venv, milliseconds.
 """
 
+import os
+import sys
+
 import torch
 
-from contact_gate import contact_gate_step
+# Import the sibling module directly rather than through the package:
+# the package __init__ chain imports isaaclab, and the whole point of
+# this test is running without Isaac.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from contact_gate import contact_gate_step  # noqa: E402
 
 
 def run_sequence(expected_seq, measured_seq, dt=0.02, cap=0.20):
