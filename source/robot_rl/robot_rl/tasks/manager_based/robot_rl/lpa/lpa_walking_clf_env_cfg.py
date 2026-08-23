@@ -749,7 +749,15 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         # time back when a foot lands early. Bounded on both sides, and
         # the hold has a hard ceiling so a fallen robot cannot freeze
         # its own clock forever.
-        self.commands.traj_ref.contact_gate = True
+        # PARKED 2026-08-23 after rough12: with the gate on, falls at
+        # matched iteration +450 were 0.988 vs the no-gate control's
+        # 0.627 and episode length 141 vs 429 -- ~4x slower recovery,
+        # same checkpoint and seed. A 64-env probe refuted the alpha-
+        # flicker mechanism (toggle rate 0.02/step, vdot blackout
+        # 5.7%), so the harm has NO confirmed mechanism after six
+        # versions. Machinery, telemetry and unit tests stay; do not
+        # re-enable without a mechanism and a matched-control read.
+        self.commands.traj_ref.contact_gate = False
 
         # Proprioceptive history -- see apply_obs_history above for
         # why, and why it is the actor only.
