@@ -202,6 +202,80 @@ class TrajectoryCommand(CommandTerm):
         self.vdot_time = 0.0
 
         self.init_time_offset = torch.zeros(self.num_envs, device=self.device)
+        # Contact-gated clock (see cfg.contact_gate). Seconds SUBTRACTED
+        # from nominal time: positive = the reference is being held back
+        # waiting for ground, negative = it was advanced after an early
+        # landing. Zero when the gate is off, so nothing changes.
+        self.contact_phase_offset = torch.zeros(self.num_envs, device=self.device)
+        self._contact_hold_elapsed = torch.zeros(self.num_envs, device=self.device)
+
+    def _measured_contact(self) -> torch.Tensor:
+        """Per-contact-frame boolean, matching how the contact rewards
+        read the sensor."""
+        sensor = self.env.scene.sensors["contact_forces"]
+        ids = [sensor.body_names.index(n) for n in self.contact_bodies
+               if n in sensor.body_names]
+        if not ids:
+            raise RuntimeError(
+                "contact_gate is on but none of the command's contact "
+                f"bodies {self.contact_bodies} are tracked by the "
+                f"contact_forces sensor ({sensor.body_names}). The gate "
+                "cannot see the ground; refusing to run blind.")
+        forces = sensor.data.net_forces_w_history[:, :, ids, :]
+        return forces.norm(dim=-1).max(dim=1)[0] > self.cfg.contact_gate_force
+
+    def _update_contact_gate(self, t_nominal: torch.Tensor) -> None:
+        """Hold the reference clock while the ground has not arrived.
+
+        Uses the PREVIOUS step's expected contact against this step's
+        measured contact -- one 20 ms step of lag, which is far below
+        the timing error being corrected.
+
+        The deadlock guard is the important part: a fallen robot never
+        makes the expected contact, so an ungated hold would stop the
+        clock forever and the reference would never ask it to step
+        again. After contact_gate_max_hold_s the clock resumes
+        regardless, and the episode is allowed to fail honestly.
+        """
+        dt = self.env.step_dt
+
+        # reset() only clears the offset when it is handed explicit
+        # env_ids; a reset-all would skip it. Zeroing on the first step
+        # of an episode makes the clean start unconditional.
+        fresh = self.env.episode_length_buf == 0
+        self.contact_phase_offset = torch.where(
+            fresh, torch.zeros_like(self.contact_phase_offset),
+            self.contact_phase_offset)
+        self._contact_hold_elapsed = torch.where(
+            fresh, torch.zeros_like(self._contact_hold_elapsed),
+            self._contact_hold_elapsed)
+
+        expected = self.get_contact_state(t_nominal, None) > 0.5
+        measured = self._measured_contact()
+
+        late = (expected & ~measured).any(dim=1)
+        early = (~expected & measured).any(dim=1)
+
+        self._contact_hold_elapsed = torch.where(
+            late, self._contact_hold_elapsed + dt,
+            torch.zeros_like(self._contact_hold_elapsed))
+        holding = late & (self._contact_hold_elapsed <= self.cfg.contact_gate_max_hold_s)
+
+        # Held: absorb this step into the offset so effective time stands still.
+        self.contact_phase_offset = torch.where(
+            holding, self.contact_phase_offset + dt, self.contact_phase_offset)
+
+        # Landed early: give the clock back, up to the lead ceiling.
+        if self.cfg.contact_gate_catchup > 0:
+            catching = early & ~holding
+            self.contact_phase_offset = torch.where(
+                catching,
+                self.contact_phase_offset - dt * self.cfg.contact_gate_catchup,
+                self.contact_phase_offset)
+
+        self.contact_phase_offset.clamp_(
+            min=-self.cfg.contact_gate_max_lead_s,
+            max=self.cfg.contact_gate_max_hold_s)
 
     def update_phasing_var(self, t: torch.Tensor, env_ids: torch.Tensor = None):
         """Get the phasing variable for the current trajectory.
@@ -970,6 +1044,11 @@ class TrajectoryCommand(CommandTerm):
             self.ref_start_time[ids] = 0.0
             self.pending_entry_time[ids] = 0.0
             self.pending_exit_phase[ids] = -1.0
+            # Clear the contact-gate clock too. Carrying an offset
+            # across a reset would start the next episode already
+            # desynced from its own reference.
+            self.contact_phase_offset[ids] = 0.0
+            self._contact_hold_elapsed[ids] = 0.0
             self.anchor_yaw_act[ids] = 0.0
             if hasattr(self, "_graph_state"):
                 self._graph_state[ids] = 0
@@ -1012,6 +1091,12 @@ class TrajectoryCommand(CommandTerm):
         # zero state (no graph in use) leaves t untouched.
         self._process_handoffs(t)
         t = t - self.ref_start_time
+
+        # Contact-gated clock: default off, so every other env is
+        # byte-identical to before.
+        if self.cfg.contact_gate:
+            self._update_contact_gate(t)
+            t = t - self.contact_phase_offset
 
         # Get conditioning variables (velocity, etc...)
         # cond_vars = self.env.command_manager.get_command(self.conditioner_generator)[:, 0]  # TODO: Allow conditioners to be more than scalars

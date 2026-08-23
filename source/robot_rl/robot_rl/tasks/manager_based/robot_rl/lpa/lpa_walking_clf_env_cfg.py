@@ -736,6 +736,21 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         self.scene.terrain.terrain_type = "generator"
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
 
+        # CONTACT-GATED REFERENCE CLOCK (rough1-8 forensics).
+        #
+        # The measured failure is a TIME-INDEXING pathology, not a
+        # terrain-magnitude one: 5 cm rubble gave 50% style retention
+        # and 2 cm smooth undulation gave 51%. Amplitude-independence
+        # is the signature of a saturated exp(-KAPPA*V/sigma) -- once
+        # the reference has walked away from a contact-delayed robot,
+        # it does not matter by how much.
+        #
+        # Hold the reference while the ground has not arrived; give the
+        # time back when a foot lands early. Bounded on both sides, and
+        # the hold has a hard ceiling so a fallen robot cannot freeze
+        # its own clock forever.
+        self.commands.traj_ref.contact_gate = True
+
         # Proprioceptive history -- see apply_obs_history above for
         # why, and why it is the actor only.
         apply_obs_history(self.observations)

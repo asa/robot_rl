@@ -27,6 +27,41 @@ class TrajectoryCommandCfg(CommandTermCfg):
     random_start_time_max: float = -1
     percent_hold_phi: float = -1
     hold_phi_threshold: float = -1
+
+    # --- contact-gated phase advance (tinh: rough-terrain fix) ---
+    #
+    # The reference clock is t = episode_length_buf * step_dt: a pure
+    # step counter with no robot input. On uneven ground the robot is
+    # delayed by ground contact, the reference does not wait, and the
+    # tracking error runs past the knee of exp(-KAPPA*V/sigma) where
+    # the gradient dies. That is why terrain AMPLITUDE made no
+    # difference across three runs -- 5 cm rubble and 2 cm undulation
+    # both gave ~50% style retention. The damage scales with any
+    # contact-timing perturbation, not with terrain height.
+    #
+    # DeepMimic named this limitation directly (arXiv:1804.02717 s11):
+    # "Our policies require a phase variable to be synchronized with
+    # the reference motion, which advances linearly with time. This
+    # limits the ability of the policy to adjust the timing of the
+    # motion."
+    #
+    # When enabled, the effective reference time is held while the
+    # reference expects stance on a foot that has not landed yet, and
+    # advanced faster when a foot lands early.
+    contact_gate: bool = False
+    # Newtons on a foot to count as contact. Matches the threshold the
+    # contact rewards already use.
+    contact_gate_force: float = 1.0
+    # Hard ceiling on how long the clock may be held, per hold episode.
+    # WITHOUT THIS the gate deadlocks: a fallen robot never makes the
+    # expected contact, so the clock stops forever and the reference
+    # never asks it to step again.
+    contact_gate_max_hold_s: float = 0.20
+    # Extra advance rate while catching up after an early landing,
+    # as a multiple of nominal. 0 disables catch-up.
+    contact_gate_catchup: float = 0.5
+    # Ceiling on how far the effective clock may LEAD nominal time.
+    contact_gate_max_lead_s: float = 0.20
     phasing_boundaries: float = 1
     # Behavior-graph skill observations (tinh-lpa-clfrl.8.5d): the
     # declared obs layout. skill_slots is the one-hot vocabulary
