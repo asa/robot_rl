@@ -707,26 +707,54 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         self.scene.terrain.terrain_type = "generator"
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
 
-        # LOWER THE BAR ON SPEED (rough1-5 forensics, user 2026-08-23).
+        # OBSERVATION HISTORY (rough1-6 forensics, user 2026-08-23).
         #
-        # Five runs have now shown the blind policy cannot hold its
-        # gait on ANY uneven ground: it falls in 19-27% of episodes
-        # while the same checkpoint falls in 0.9% on flat, and it
-        # tracks base position, orientation and velocity at 97-100%
-        # of the flat baseline right up until it trips.
+        # THE finding: every obs term was history_length=1, so the
+        # policy saw a single instantaneous frame. Terrain is then
+        # formally UNOBSERVABLE -- from one instant of proprioception
+        # you cannot tell "the ground rose 2 cm under my left foot"
+        # from "my tracking is off". No reward shaping can recover
+        # information the observation does not contain, which is why
+        # five runs of tuning changed nothing.
         #
-        # Terrain amplitude is NOT the driver -- 2 cm of gently
-        # correlated undulation produced MORE falls (0.324 at +6000)
-        # than 5 cm of rubble (0.268). Neither is the reward
-        # structure: splitting the style term by limb changed the
-        # arm-drift endpoint not at all (0.495 vs 0.496 rad).
+        # Every blind-locomotion result in the literature feeds a
+        # WINDOW of past proprioception: Lee et al. 2020 (ANYmal,
+        # Science Robotics) use a temporal CNN over ~50 steps;
+        # Radosavovic et al. 2024 (Digit, the closest work to this
+        # one) use a causal transformer over observation-action
+        # history. History is what lets a blind robot infer ground it
+        # cannot see, from how the last few footfalls went.
         #
-        # What has never been varied is the SPEED. The policy is
-        # blind, so it cannot place a foot for ground it has not
-        # seen; the faster it walks, the less time it has to react to
-        # a surprise underfoot. Halve the commanded span, and work
-        # back up only once falls come down.
-        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.29)
+        # Applied to the ACTOR only. The critic already gets
+        # privileged state (base_lin_vel, root_quat, ...), so this is
+        # the standard asymmetric actor-critic split and the critic
+        # needs no checkpoint remap.
+        #
+        # Commands and the phase clock are excluded deliberately:
+        # both are externally supplied and deterministic, so their
+        # history carries nothing.
+        #
+        # Policy obs 74 -> 350. Resuming needs
+        # scripts/expand_obs_history.py, NOT pad_checkpoint_obs.py --
+        # history expands each term IN PLACE rather than appending,
+        # so zero-padding the end would misalign every later weight.
+        # POLICY ONLY. CriticCfg subclasses PolicyCfg but holds its
+        # own term instances, so this leaves the critic at 249 and
+        # needing no remap -- which is the whole point of keeping the
+        # split asymmetric.
+        _HIST = 5
+        for _t in ("base_ang_vel", "projected_gravity", "joint_pos",
+                   "joint_vel", "actions"):
+            _term = getattr(self.observations.policy, _t, None)
+            if _term is not None:
+                _term.history_length = _HIST
+
+        # (The 0.58 -> 0.29 speed reduction was prepared for rough6
+        # and pulled back out: observation history is the change
+        # under test now, and shipping both at once would repeat the
+        # two-variables mistake that made rough4 uninterpretable.
+        # Speed remains available as a later knob if history alone is
+        # not enough.)
 
         # SPLIT STYLE REWARD (rough1/2/3 forensics).
         #
