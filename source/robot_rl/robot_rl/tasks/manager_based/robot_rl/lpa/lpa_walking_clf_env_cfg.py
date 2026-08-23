@@ -763,6 +763,16 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         # why, and why it is the actor only.
         apply_obs_history(self.observations)
 
+        # CLEARANCE REFERENCE (tinh-nwgy, user-approved 2026-08-23).
+        # Same stomp solve plus a hard 4 cm swing-foot clearance floor
+        # on the mid-swing nodes: the z=0 keeper leaves swing height
+        # emergent, and a blind policy trips on bumps the reference
+        # never asked it to clear (undesired_contacts 3.2x on rough).
+        # Conditioner vel_x=0.5612 is identical to the keeper, so
+        # command spans need no recentering. ROUGH ENV ONLY -- flat
+        # keeps the keeper library for the like-for-like ablation.
+        self.commands.traj_ref.path = "lpa_lib/trajectories/walk_forward_clear4"
+
         # (The 0.58 -> 0.29 speed reduction was prepared for rough6
         # and pulled back out: observation history is the change
         # under test now, and shipping both at once would repeat the
