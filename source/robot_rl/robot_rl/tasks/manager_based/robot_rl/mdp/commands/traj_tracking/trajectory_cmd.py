@@ -3,6 +3,8 @@
 import numpy as np
 import re
 import torch
+
+from .contact_gate import contact_gate_step
 import time
 from isaaclab.managers import CommandTerm
 
@@ -202,112 +204,73 @@ class TrajectoryCommand(CommandTerm):
         self.vdot_time = 0.0
 
         self.init_time_offset = torch.zeros(self.num_envs, device=self.device)
-        # Contact-gated clock (see cfg.contact_gate). Seconds SUBTRACTED
-        # from nominal time: positive = the reference is being held back
-        # waiting for ground, negative = it was advanced after an early
-        # landing. Zero when the gate is off, so nothing changes.
+        # Contact-gated clock (see contact_gate.py for the semantics and
+        # for why the logic lives in a pure, unit-tested module).
+        # offset: seconds SUBTRACTED from nominal time, monotone
+        # non-decreasing (hold-only). rate: d(t_eff)/d(t_real) — the
+        # desired VELOCITY must be scaled by it in get_desired_outputs
+        # or the reference is frozen in position while still moving at
+        # full mid-swing speed.
+        _n_contacts = len(self.contact_bodies)
         self.contact_phase_offset = torch.zeros(self.num_envs, device=self.device)
-        self._contact_hold_elapsed = torch.zeros(self.num_envs, device=self.device)
-        # Effective clock RATE alpha = d(t_eff)/d(t_real). The desired
-        # VELOCITY must be scaled by it or the reference is frozen in
-        # position while still moving at full speed -- see
-        # get_desired_outputs. 1.0 = nominal, 0.0 = held.
         self.contact_phase_rate = torch.ones(self.num_envs, device=self.device)
+        self._contact_hold_elapsed = torch.zeros(self.num_envs, device=self.device)
+        self._gate_awaiting = torch.zeros(
+            self.num_envs, _n_contacts, dtype=torch.bool, device=self.device)
+        self._gate_prev_expected = torch.zeros(
+            self.num_envs, _n_contacts, dtype=torch.bool, device=self.device)
 
     def _measured_contact(self) -> torch.Tensor:
         """Per-contact-frame boolean, matching how the contact rewards
-        read the sensor."""
+        read the sensor. Requires EVERY contact body to be tracked:
+        a partial match would silently misalign the measured columns
+        against the expected-contact columns and the gate would
+        compare foot A's schedule with foot B's ground truth.
+        """
         sensor = self.env.scene.sensors["contact_forces"]
-        ids = [sensor.body_names.index(n) for n in self.contact_bodies
-               if n in sensor.body_names]
-        if not ids:
+        missing = [n for n in self.contact_bodies
+                   if n not in sensor.body_names]
+        if missing:
             raise RuntimeError(
-                "contact_gate is on but none of the command's contact "
-                f"bodies {self.contact_bodies} are tracked by the "
-                f"contact_forces sensor ({sensor.body_names}). The gate "
-                "cannot see the ground; refusing to run blind.")
+                f"contact_gate: contact bodies {missing} are not tracked "
+                f"by the contact_forces sensor ({sensor.body_names}). "
+                "The gate cannot see the ground; refusing to run blind.")
+        ids = [sensor.body_names.index(n) for n in self.contact_bodies]
         forces = sensor.data.net_forces_w_history[:, :, ids, :]
         return forces.norm(dim=-1).max(dim=1)[0] > self.cfg.contact_gate_force
 
     def _update_contact_gate(self, t_nominal: torch.Tensor) -> None:
-        """Hold the reference clock while the ground has not arrived.
+        """Advance the gate one step. Semantics live in
+        contact_gate.py (edge-triggered awaiting-contact hold).
 
-        Uses the PREVIOUS step's expected contact against this step's
-        measured contact -- one 20 ms step of lag, which is far below
-        the timing error being corrected.
-
-        The deadlock guard is the important part: a fallen robot never
-        makes the expected contact, so an ungated hold would stop the
-        clock forever and the reference would never ask it to step
-        again. After contact_gate_max_hold_s the clock resumes
-        regardless, and the episode is allowed to fail honestly.
+        Expected contact is evaluated at EFFECTIVE time — the frame
+        the robot is actually tracking. Version 2 evaluated it at
+        nominal time, so after the first hold every comparison was
+        made against a frame the robot was not tracking, and the
+        catch-up branch drained the very offset the hold had just
+        built. One step of offset lag remains (this step's expected
+        uses last step's offset); at 20 ms it is far below the timing
+        error being corrected.
         """
-        dt = self.env.step_dt
-
-        # reset() only clears the offset when it is handed explicit
-        # env_ids; a reset-all would skip it. Zeroing on the first step
-        # of an episode makes the clean start unconditional.
-        fresh = self.env.episode_length_buf == 0
-        self.contact_phase_offset = torch.where(
-            fresh, torch.zeros_like(self.contact_phase_offset),
-            self.contact_phase_offset)
-        self._contact_hold_elapsed = torch.where(
-            fresh, torch.zeros_like(self._contact_hold_elapsed),
-            self._contact_hold_elapsed)
-        self.contact_phase_rate = torch.where(
-            fresh, torch.ones_like(self.contact_phase_rate),
-            self.contact_phase_rate)
-
-        expected = self.get_contact_state(t_nominal, None) > 0.5
+        t_eff = t_nominal - self.contact_phase_offset
+        expected = self.get_contact_state(t_eff, None) > 0.5
         measured = self._measured_contact()
+        fresh = self.env.episode_length_buf == 0
 
-        late = (expected & ~measured).any(dim=1)
-        early = (~expected & measured).any(dim=1)
+        (self._gate_prev_expected, self._gate_awaiting,
+         self._contact_hold_elapsed, self.contact_phase_offset,
+         holding, self.contact_phase_rate) = contact_gate_step(
+            expected, self._gate_prev_expected, self._gate_awaiting,
+            self._contact_hold_elapsed, self.contact_phase_offset,
+            measured, fresh, self.env.step_dt,
+            self.cfg.contact_gate_max_hold_s)
 
-        self._contact_hold_elapsed = torch.where(
-            late, self._contact_hold_elapsed + dt,
-            torch.zeros_like(self._contact_hold_elapsed))
-        holding = late & (self._contact_hold_elapsed <= self.cfg.contact_gate_max_hold_s)
-
-        # Held: absorb this step into the offset so effective time stands still.
-        self.contact_phase_offset = torch.where(
-            holding, self.contact_phase_offset + dt, self.contact_phase_offset)
-
-        # Landed early: give the clock back, up to the lead ceiling.
-        if self.cfg.contact_gate_catchup > 0:
-            catching = early & ~holding
-            self.contact_phase_offset = torch.where(
-                catching,
-                self.contact_phase_offset - dt * self.cfg.contact_gate_catchup,
-                self.contact_phase_offset)
-
-        # alpha = d(t_eff)/d(t_real) = 1 - d(offset)/d(t_real).
-        # Held -> 0 (the reference is standing still in real time);
-        # catching up -> 1 + catchup; otherwise 1. This is the chain
-        # rule for y_des(t_eff(t_real)), and WITHOUT IT the velocity
-        # half of the CLF error stays at full nominal magnitude
-        # against a robot that is near-static waiting for ground --
-        # so the gate would remove the position error and leave the
-        # velocity error, fixing half the problem and muddying the
-        # other half.
-        alpha = torch.ones_like(self.contact_phase_offset)
-        alpha = torch.where(holding, torch.zeros_like(alpha), alpha)
-        if self.cfg.contact_gate_catchup > 0:
-            alpha = torch.where(
-                early & ~holding,
-                torch.full_like(alpha, 1.0 + self.cfg.contact_gate_catchup),
-                alpha)
-        # A clamped offset is no longer moving, so the rate is nominal
-        # again even though the branch fired.
-        at_ceiling = self.contact_phase_offset >= self.cfg.contact_gate_max_hold_s
-        at_floor = self.contact_phase_offset <= -self.cfg.contact_gate_max_lead_s
-        alpha = torch.where(holding & at_ceiling, torch.ones_like(alpha), alpha)
-        alpha = torch.where(early & at_floor, torch.ones_like(alpha), alpha)
-        self.contact_phase_rate = alpha
-
-        self.contact_phase_offset.clamp_(
-            min=-self.cfg.contact_gate_max_lead_s,
-            max=self.cfg.contact_gate_max_hold_s)
+        # Telemetry. Without it, a null training result cannot be
+        # attributed: "the gate never fired" and "the gate fired and
+        # did not matter" look identical from the reward curves alone.
+        self.metrics["gate_offset_s"] = self.contact_phase_offset.clone()
+        self.metrics["gate_holding"] = holding.float()
+        self.metrics["gate_awaiting"] = self._gate_awaiting.any(dim=1).float()
 
     def update_phasing_var(self, t: torch.Tensor, env_ids: torch.Tensor = None):
         """Get the phasing variable for the current trajectory.
@@ -1090,6 +1053,7 @@ class TrajectoryCommand(CommandTerm):
             self.contact_phase_offset[ids] = 0.0
             self._contact_hold_elapsed[ids] = 0.0
             self.contact_phase_rate[ids] = 1.0
+            self._gate_awaiting[ids] = False
             self.anchor_yaw_act[ids] = 0.0
             if hasattr(self, "_graph_state"):
                 self._graph_state[ids] = 0

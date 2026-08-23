@@ -30,38 +30,26 @@ class TrajectoryCommandCfg(CommandTermCfg):
 
     # --- contact-gated phase advance (tinh: rough-terrain fix) ---
     #
-    # The reference clock is t = episode_length_buf * step_dt: a pure
+    # The reference clock is t = episode_length_buf * step_dt, a pure
     # step counter with no robot input. On uneven ground the robot is
     # delayed by ground contact, the reference does not wait, and the
     # tracking error runs past the knee of exp(-KAPPA*V/sigma) where
-    # the gradient dies. That is why terrain AMPLITUDE made no
-    # difference across three runs -- 5 cm rubble and 2 cm undulation
-    # both gave ~50% style retention. The damage scales with any
-    # contact-timing perturbation, not with terrain height.
+    # the gradient dies -- the amplitude-independent failure measured
+    # across rough1-8 (5 cm rubble 50% style retention, 2 cm smooth
+    # undulation 51%).
     #
-    # DeepMimic named this limitation directly (arXiv:1804.02717 s11):
-    # "Our policies require a phase variable to be synchronized with
-    # the reference motion, which advances linearly with time. This
-    # limits the ability of the policy to adjust the timing of the
-    # motion."
-    #
-    # When enabled, the effective reference time is held while the
-    # reference expects stance on a foot that has not landed yet, and
-    # advanced faster when a foot lands early.
+    # Semantics are EDGE-TRIGGERED and hold-only; see contact_gate.py
+    # for the two shipped bugs that forced that design (a uniform
+    # level test misfires at every toe-off, and a catch-up branch with
+    # the same defect sped the clock up when the robot was behind).
     contact_gate: bool = False
     # Newtons on a foot to count as contact. Matches the threshold the
     # contact rewards already use.
     contact_gate_force: float = 1.0
-    # Hard ceiling on how long the clock may be held, per hold episode.
-    # WITHOUT THIS the gate deadlocks: a fallen robot never makes the
-    # expected contact, so the clock stops forever and the reference
-    # never asks it to step again.
+    # Hard ceiling per hold. WITHOUT THIS the gate deadlocks: a fallen
+    # robot never lands the awaited foot, the clock stops forever, and
+    # the reference never asks it to step again.
     contact_gate_max_hold_s: float = 0.20
-    # Extra advance rate while catching up after an early landing,
-    # as a multiple of nominal. 0 disables catch-up.
-    contact_gate_catchup: float = 0.5
-    # Ceiling on how far the effective clock may LEAD nominal time.
-    contact_gate_max_lead_s: float = 0.20
     phasing_boundaries: float = 1
     # Behavior-graph skill observations (tinh-lpa-clfrl.8.5d): the
     # declared obs layout. skill_slots is the one-hot vocabulary
