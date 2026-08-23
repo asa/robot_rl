@@ -707,6 +707,27 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         self.scene.terrain.terrain_type = "generator"
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
 
+        # LOWER THE BAR ON SPEED (rough1-5 forensics, user 2026-08-23).
+        #
+        # Five runs have now shown the blind policy cannot hold its
+        # gait on ANY uneven ground: it falls in 19-27% of episodes
+        # while the same checkpoint falls in 0.9% on flat, and it
+        # tracks base position, orientation and velocity at 97-100%
+        # of the flat baseline right up until it trips.
+        #
+        # Terrain amplitude is NOT the driver -- 2 cm of gently
+        # correlated undulation produced MORE falls (0.324 at +6000)
+        # than 5 cm of rubble (0.268). Neither is the reward
+        # structure: splitting the style term by limb changed the
+        # arm-drift endpoint not at all (0.495 vs 0.496 rad).
+        #
+        # What has never been varied is the SPEED. The policy is
+        # blind, so it cannot place a foot for ground it has not
+        # seen; the faster it walks, the less time it has to react to
+        # a surprise underfoot. Halve the commanded span, and work
+        # back up only once falls come down.
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.29)
+
         # SPLIT STYLE REWARD (rough1/2/3 forensics).
         #
         # Three runs collapsed to ~50% of their opening style within
