@@ -681,7 +681,6 @@ class LpaWalkingCLFGraphTurnEnvCfg(LpaWalkingCLFSkillEnvCfg):
                 "robot", joint_names=["WAIST_YAW"])})
 
 
-@configclass
 # Observation history, shared by every env that trains or plays a
 # history policy so the two cannot drift into different widths.
 #
@@ -711,6 +710,7 @@ def apply_obs_history(observations, history: int = LPA_OBS_HISTORY):
             term.history_length = history
 
 
+@configclass
 class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
     """Flat-ground walking, trained on MILDLY ROUGH ground for
     robustness (user 2026-08-21: "handle uneven terrain, even if we
