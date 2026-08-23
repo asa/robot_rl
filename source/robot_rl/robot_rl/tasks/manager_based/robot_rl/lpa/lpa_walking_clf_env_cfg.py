@@ -727,22 +727,30 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         # Splitting gives each group its own exponential, so:
         #   sigma  = TOLERANCE, how far this group may deviate
         #   weight = PRIORITY, how hard it is pulled back
-        # Arms get a 1.5x wider sigma (0.3 vs 0.2 per joint) so they
-        # are FREE to do angular-momentum work -- that is their job
-        # when the legs are perturbed, and penalising arm motion
-        # would fight the mechanics -- while a substantial weight
-        # still restores the mean pose to style.
+        # PURE SPLIT -- nothing but the shared exponential changes.
         #
-        # Weights sum to 1.0, the combined term's old weight, so the
-        # overall reward scale is unchanged. The combined term is
+        # The first attempt (rough4) widened the arm sigma to 0.3 at
+        # the same time, to "permit" balance work. That made the
+        # reward LESS sensitive near small errors, i.e. it pulled the
+        # arms back more weakly, plausibly cancelling whatever the
+        # split bought: arm drift came out at 1.58x against the
+        # combined run's 1.50x, no better. Two variables, one run,
+        # no conclusion.
+        #
+        # So: per-joint sigma convention preserved (0.2*sqrt(n), the
+        # same normalisation the combined term used over its 21), and
+        # weights proportional to joint count so each joint carries
+        # the influence it had before. The ONLY difference from the
+        # combined term is that each group now has its own
+        # exponential and cannot have its gradient flattened by
+        # another group's error. The combined term is
         # switched off; note IsaacLab SKIPS zero-weight terms
         # entirely, so Episode_Reward/joint_pos will read 0.0 for
         # this env -- use `style_gate --metric arms` here.
         self.rewards.joint_pos.weight = 0.0
         from isaaclab.managers import RewardTermCfg as _RewGrp
-        for _grp, _n, _s, _w in (("legs", 10, 0.2, 0.45),
-                                 ("arms", 8, 0.3, 0.40),
-                                 ("torso", 3, 0.2, 0.15)):
+        for _grp, _n in (("legs", 10), ("arms", 8), ("torso", 3)):
+            _s, _w = 0.2, _n / 21.0
             setattr(self.rewards, f"joint_pos_{_grp}", _RewGrp(
                 func=mdp.joint_pos_group_reward, weight=_w,
                 params={"command_name": "traj_ref",
