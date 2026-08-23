@@ -224,6 +224,19 @@ class TrajectoryCommand(CommandTerm):
         # once per SIM step or dt accrues per call and every hold runs
         # fast. Guarded on the env's global step counter.
         self._gate_last_counter = -1
+        # B1-R (gate v4 review): the gate must advance only on calls
+        # made INSIDE compute(dt), where episode buffers are correct.
+        # The reset-path _resample (command_manager.reset ->
+        # _resample -> _update_command) runs while episode_length_buf
+        # is still the DEAD episode's value (the gt12 forensics in
+        # reset() below), and v4's counter guard let that stale call
+        # consume the one advance per step -- so reborn envs were
+        # never fresh-seeded and every death fabricated a rising edge
+        # on the spawn frame. compute() sets this flag; nothing else
+        # does.
+        self._gate_vdot_cooldown = torch.zeros(
+            self.num_envs, dtype=torch.long, device=self.device)
+        self._gate_may_advance = False
 
     def _measured_contact(self) -> torch.Tensor:
         """Per-contact-frame boolean, matching how the contact rewards
@@ -244,6 +257,15 @@ class TrajectoryCommand(CommandTerm):
         forces = sensor.data.net_forces_w_history[:, :, ids, :]
         return forces.norm(dim=-1).max(dim=1)[0] > self.cfg.contact_gate_force
 
+    def compute(self, dt: float):
+        """Arm the contact gate for exactly the calls made inside the
+        per-step compute, where episode buffers are correct. See
+        _update_contact_gate for why the reset-path calls must not
+        advance it."""
+        if self.cfg.contact_gate:
+            self._gate_may_advance = True
+        super().compute(dt)
+
     def _update_contact_gate(self, t_nominal: torch.Tensor) -> None:
         """Advance the gate one step. Semantics live in
         contact_gate.py (edge-triggered awaiting-contact hold).
@@ -257,12 +279,17 @@ class TrajectoryCommand(CommandTerm):
         uses last step's offset); at 20 ms it is far below the timing
         error being corrected.
         """
-        # At most one advance per sim step; later calls in the same
-        # step reuse the already-computed offset and rate.
+        # Advance only when armed by compute(dt) -- reset-path calls
+        # carry stale episode buffers and must reuse the existing
+        # offset/rate -- and at most once per sim step even within
+        # compute (the resample path re-enters _update_command).
         counter = int(self.env.common_step_counter)
-        if counter == self._gate_last_counter:
+        if not self._gate_may_advance or counter == self._gate_last_counter:
             return
+        self._gate_may_advance = False
         self._gate_last_counter = counter
+
+        prev_rate = self.contact_phase_rate.clone()
 
         t_eff = t_nominal - self.contact_phase_offset
         expected = self.get_contact_state(t_eff, None) > 0.5
@@ -277,6 +304,22 @@ class TrajectoryCommand(CommandTerm):
             measured, fresh, self.env.step_dt,
             self.cfg.contact_gate_max_hold_s,
             self.cfg.contact_gate_hold_alpha)
+
+        # B2-R: a hold rate-change steps dy_des by (1 - hold_alpha) of
+        # its magnitude in one step. The CLF's 3-point backward
+        # stencil differentiates that deliberate jump into a vdot of
+        # O(100-1000) -- far above the reward's violation cap, far
+        # below the 10000 reset clamp -- so every legitimate hold
+        # would eat capped clf_decreasing penalty at BOTH onset and
+        # release, punishing exactly what the gate exists to forgive.
+        # Cooldown counts sim steps; _update_command zeroes vdot while
+        # it is live, the same forgiveness class as the reset clamp.
+        self._gate_vdot_cooldown = torch.clamp(self._gate_vdot_cooldown - 1, min=0)
+        rate_changed = self.contact_phase_rate != prev_rate
+        self._gate_vdot_cooldown = torch.where(
+            rate_changed,
+            torch.full_like(self._gate_vdot_cooldown, 3),
+            self._gate_vdot_cooldown)
 
         # Telemetry. Without it, a null training result cannot be
         # attributed: "the gate never fired" and "the gate fired and
@@ -1076,6 +1119,7 @@ class TrajectoryCommand(CommandTerm):
             self._contact_hold_elapsed[ids] = 0.0
             self.contact_phase_rate[ids] = 1.0
             self._gate_awaiting[ids] = False
+            self._gate_vdot_cooldown[ids] = 0
             self.anchor_yaw_act[ids] = 0.0
             if hasattr(self, "_graph_state"):
                 self._graph_state[ids] = 0
@@ -1190,6 +1234,10 @@ class TrajectoryCommand(CommandTerm):
         end = time.perf_counter()
         self.vdot_time = (end - start) * torch.ones(self.num_envs, device=self.device)
 
+        if self.cfg.contact_gate:
+            # B2-R forgiveness window: see _update_contact_gate.
+            vdot = torch.where(self._gate_vdot_cooldown > 0,
+                               torch.zeros_like(vdot), vdot)
         self.vdot = vdot
         self.v = vcur
 
