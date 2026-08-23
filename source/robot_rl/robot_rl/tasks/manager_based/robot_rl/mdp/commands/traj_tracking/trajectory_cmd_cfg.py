@@ -50,6 +50,12 @@ class TrajectoryCommandCfg(CommandTermCfg):
     # robot never lands the awaited foot, the clock stops forever, and
     # the reference never asks it to step again.
     contact_gate_max_hold_s: float = 0.20
+    # Clock rate DURING a hold. 0 would be a freeze-frame, and a
+    # freeze-frame is dynamically infeasible (a mid-swing foot at
+    # ~1.5 m/s cannot track dy_des = 0 in one step) -- slow motion
+    # keeps the reference feasible. Lag absorbed per hold =
+    # (1 - alpha) * max_hold_s.
+    contact_gate_hold_alpha: float = 0.4
     phasing_boundaries: float = 1
     # Behavior-graph skill observations (tinh-lpa-clfrl.8.5d): the
     # declared obs layout. skill_slots is the one-hot vocabulary

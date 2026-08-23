@@ -66,6 +66,7 @@ def contact_gate_step(
     fresh: torch.Tensor,          # [N] bool — first step of an episode
     dt: float,
     max_hold_s: float,
+    hold_alpha: float = 0.4,
 ):
     """One step of the gate. Returns
     (prev_expected', awaiting', elapsed', offset', holding, alpha).
@@ -96,7 +97,9 @@ def contact_gate_step(
     elapsed = torch.where(awaiting_any, elapsed + dt, zeros_f)
     holding = awaiting_any & (elapsed <= max_hold_s)
 
-    offset = torch.where(holding, offset + dt, offset)
-    alpha = torch.where(holding, zeros_f, torch.ones_like(offset))
+    offset = torch.where(holding, offset + dt * (1.0 - hold_alpha), offset)
+    alpha = torch.where(holding,
+                        torch.full_like(offset, hold_alpha),
+                        torch.ones_like(offset))
 
     return expected, awaiting, elapsed, offset, holding, alpha

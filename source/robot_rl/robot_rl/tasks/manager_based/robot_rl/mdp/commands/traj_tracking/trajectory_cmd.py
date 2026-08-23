@@ -219,6 +219,11 @@ class TrajectoryCommand(CommandTerm):
             self.num_envs, _n_contacts, dtype=torch.bool, device=self.device)
         self._gate_prev_expected = torch.zeros(
             self.num_envs, _n_contacts, dtype=torch.bool, device=self.device)
+        # _update_command runs 2-3x per env step (compute + the
+        # resample path re-enter it), so the gate must advance at most
+        # once per SIM step or dt accrues per call and every hold runs
+        # fast. Guarded on the env's global step counter.
+        self._gate_last_counter = -1
 
     def _measured_contact(self) -> torch.Tensor:
         """Per-contact-frame boolean, matching how the contact rewards
@@ -252,6 +257,13 @@ class TrajectoryCommand(CommandTerm):
         uses last step's offset); at 20 ms it is far below the timing
         error being corrected.
         """
+        # At most one advance per sim step; later calls in the same
+        # step reuse the already-computed offset and rate.
+        counter = int(self.env.common_step_counter)
+        if counter == self._gate_last_counter:
+            return
+        self._gate_last_counter = counter
+
         t_eff = t_nominal - self.contact_phase_offset
         expected = self.get_contact_state(t_eff, None) > 0.5
         measured = self._measured_contact()
@@ -263,7 +275,8 @@ class TrajectoryCommand(CommandTerm):
             expected, self._gate_prev_expected, self._gate_awaiting,
             self._contact_hold_elapsed, self.contact_phase_offset,
             measured, fresh, self.env.step_dt,
-            self.cfg.contact_gate_max_hold_s)
+            self.cfg.contact_gate_max_hold_s,
+            self.cfg.contact_gate_hold_alpha)
 
         # Telemetry. Without it, a null training result cannot be
         # attributed: "the gate never fired" and "the gate fired and
@@ -1019,6 +1032,15 @@ class TrajectoryCommand(CommandTerm):
         self.pending_ref_id[fire] = self._NO_PENDING
         self.pending_exit_phase[fire] = -1.0
         self.ref_start_time[fire] = t[fire] - self.pending_entry_time[fire]
+        # A handoff rebases the clock into a NEW segment; an offset
+        # accumulated against the old segment's contact schedule is
+        # stale there, and a stale awaiting flag could hold the new
+        # segment's clock for a touchdown it never scheduled.
+        if self.cfg.contact_gate and fire.any():
+            self.contact_phase_offset[fire] = 0.0
+            self.contact_phase_rate[fire] = 1.0
+            self._contact_hold_elapsed[fire] = 0.0
+            self._gate_awaiting[fire] = False
         # Anchor the measured stance yaw at segment entry (7.7.v3).
         self.anchor_yaw_act[fire] = _yaw_of_quat_wxyz(
             self.ref_poses[fire, 3:7])

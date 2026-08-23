@@ -20,7 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from contact_gate import contact_gate_step  # noqa: E402
 
 
-def run_sequence(expected_seq, measured_seq, dt=0.02, cap=0.20):
+def run_sequence(expected_seq, measured_seq, dt=0.02, cap=0.20,
+                 hold_alpha=0.4):
     """Drive the gate through [T, C] bool sequences for one env.
     Returns per-step (holding, alpha, offset)."""
     C = len(expected_seq[0])
@@ -34,7 +35,8 @@ def run_sequence(expected_seq, measured_seq, dt=0.02, cap=0.20):
         exp = torch.tensor([e], dtype=torch.bool)
         mea = torch.tensor([m], dtype=torch.bool)
         prev, awaiting, elapsed, offset, holding, alpha = contact_gate_step(
-            exp, prev, awaiting, elapsed, offset, mea, fresh, dt, cap)
+            exp, prev, awaiting, elapsed, offset, mea, fresh, dt, cap,
+            hold_alpha)
         out.append((bool(holding[0]), float(alpha[0]), float(offset[0])))
     return out
 
@@ -46,9 +48,13 @@ def test_late_ground_holds_until_landing():
     M = [[0], [0], [0], [0], [0], [1], [1]]
     out = run_sequence(E, M)
     assert [h for h, _, _ in out] == [False, False, True, True, True, False, False]
-    assert abs(out[-1][2] - 0.06) < 1e-6  # 3 held steps * 20 ms (float32)
-    # alpha is 0 exactly while holding, 1 otherwise
-    assert [a for _, a, _ in out] == [1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0]
+    # offset accrues (1 - hold_alpha) * dt per held step: slow motion,
+    # not freeze-frame -- a full stop is dynamically infeasible for a
+    # mid-swing foot.
+    assert abs(out[-1][2] - 3 * 0.02 * 0.6) < 1e-6
+    # alpha is the hold floor exactly while holding, 1 otherwise
+    a = [round(a_, 4) for _, a_, _ in out]
+    assert a == [1.0, 1.0, 0.4, 0.4, 0.4, 1.0, 1.0]
 
 
 def test_early_toeoff_never_holds():
@@ -73,7 +79,8 @@ def test_hold_cap_releases_and_stays_released():
     assert held[1] is True                      # arms on the edge
     assert sum(held) == 5                       # 0.10 s / 0.02 s
     assert not any(held[7:])                    # never re-holds
-    assert abs(out[-1][2] - 0.10) < 1e-6        # offset capped
+    # offset = held duration * (1 - alpha)
+    assert abs(out[-1][2] - 0.10 * 0.6) < 1e-6
 
 
 def test_mid_stance_force_dropout_never_holds():
@@ -95,6 +102,15 @@ def test_per_foot_independence():
     assert [h for h, _, _ in out] == [False, True, False, False, False]
 
 
+def test_freeze_frame_mode_still_available():
+    """hold_alpha=0 remains a valid configuration; the DEFAULT is the
+    slow-motion floor."""
+    E = [[0], [1], [1]]
+    M = [[0], [0], [0]]
+    out = run_sequence(E, M, hold_alpha=0.0)
+    assert out[1][1] == 0.0 and abs(out[1][2] - 0.02) < 1e-6
+
+
 def test_fresh_episode_cannot_fabricate_an_edge():
     """Reset into double-support stance: expected jumps 0->1 across
     the reset boundary, but a fresh episode must not read that as a
@@ -110,7 +126,7 @@ def test_fresh_episode_cannot_fabricate_an_edge():
     offset = torch.tensor([0.14])
     prev, awaiting, elapsed, offset, holding, alpha = contact_gate_step(
         torch.tensor([[True]]), prev, awaiting, elapsed, offset,
-        torch.tensor([[False]]), torch.tensor([True]), 0.02, 0.20)
+        torch.tensor([[False]]), torch.tensor([True]), 0.02, 0.20, 0.4)
     assert not bool(holding[0])
     assert float(offset[0]) == 0.0
     assert not bool(awaiting[0, 0])

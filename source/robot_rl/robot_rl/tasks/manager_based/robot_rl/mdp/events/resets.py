@@ -114,6 +114,17 @@ def reset_on_reference(
     total_time = cmd.manager.get_total_time()
     random_times = torch.rand(num_ref_envs, device=env.device) * total_time
 
+    # This event runs BEFORE the command term's reset clears the
+    # contact gate, and get_desired_outputs scales y_vel by the gate's
+    # clock rate -- so a dead episode that ended mid-hold would spawn
+    # the reborn env with a slowed reference velocity. Clear the gate
+    # for the reborn envs first.
+    if getattr(cmd.cfg, "contact_gate", False):
+        cmd.contact_phase_offset[ref_ids] = 0.0
+        cmd.contact_phase_rate[ref_ids] = 1.0
+        cmd._contact_hold_elapsed[ref_ids] = 0.0
+        cmd._gate_awaiting[ref_ids] = False
+
     # Get trajectory outputs at sampled times
     cmd.get_desired_outputs(random_times, env_ids=ref_ids)
     des_outputs = cmd.y_des
