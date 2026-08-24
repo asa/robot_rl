@@ -417,6 +417,21 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
         # write_joint_position_limit_to_sim also recomputes the soft
         # limits, so dof_pos_limits becomes meaningful for the first
         # time. Grouped by identical band to keep the term count down.
+        # dof_pos_limits penalises against the SOFT limits, and
+        # soft_joint_pos_limit_factor shrinks about the band MIDPOINT.
+        # On the deliberately asymmetric shoulder-pitch band that puts
+        # the soft edge at -2.763 while the USER-APPROVED throw
+        # chambers to -2.8134 -- the reward would punish a behaviour
+        # the user signed off on. Verified by reading the limits back
+        # out of PhysX (tools: /tmp/rom_verify.py). Scope the penalty
+        # to legs + waist, where the bands are symmetric and the soft
+        # edge is honest; the ARMS are bounded by the HARD ROM above,
+        # which PhysX enforces without any reward help.
+        self.rewards.dof_pos_limits.params["asset_cfg"] = SceneEntityCfg(
+            "robot", joint_names=[
+                ".*_HIP_.*", ".*_KNEE", ".*_ANKLE",
+                "WAIST_YAW", "TORSO_PITCH", "TORSO_ROLL"])
+
         _rom_groups: dict[tuple[float, float], list[str]] = {}
         for _j, _band in LPA_ARM_ROM.items():
             _rom_groups.setdefault(_band, []).append(_j)
