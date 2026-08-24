@@ -18,6 +18,8 @@ ENVIRONMENTS = {
     # Flat + obs history: the play/export env for history policies,
     # which cannot load into the 74-obs plain flat env.
     "lpa_walking_clf_hist": "LPA-walking-clf-hist",
+    # Flat + history + clear4 refs: the tinh-nwgy discriminator.
+    "lpa_walking_clf_hist_clear4": "LPA-walking-clf-hist-clear4",
     "vanilla": "G1-vanilla-walking",
     "vanilla_ec": "G1-vanilla-walking-ec",
     "lip_clf": "G1-lip-clf",
@@ -46,6 +48,7 @@ EXPERIMENT_NAMES = {
     "lpa_walking_clf_ramp": "lpa_walking_clf",  # tinh-lpa-ramp.5 (shared exp dir)
     "lpa_walking_clf_rough": "lpa_walking_clf",  # rough (shared exp dir)
     "lpa_walking_clf_hist": "lpa_walking_clf",  # hist (shared exp dir)
+    "lpa_walking_clf_hist_clear4": "lpa_walking_clf",  # (shared exp dir)
     "vanilla": "vanilla",
     "vanilla_ec": "vanilla",
     "basic": "baseline",

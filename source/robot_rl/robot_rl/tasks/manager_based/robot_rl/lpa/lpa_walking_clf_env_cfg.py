@@ -862,3 +862,27 @@ class LpaWalkingCLFHistEnvCfg(LpaWalkingCLFEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         apply_obs_history(self.observations)
+
+
+@configclass
+class LpaWalkingCLFHistClear4EnvCfg(LpaWalkingCLFHistEnvCfg):
+    """FLAT ground + history + the clear4 clearance reference.
+
+    The discriminator for tinh-nwgy's first rough run: rough13 asked
+    the policy to learn a NEW gait and NEW terrain simultaneously and
+    pinned at ~100% falls through +800 while the rough8 control (same
+    checkpoint, keeper refs) was at 0.577. This env removes terrain:
+
+      falls converge here  -> clear4 is trackable; the rough failure
+                              was the double change. Curriculum:
+                              adapt on flat FIRST, then resume rough
+                              from the adapted checkpoint.
+      falls stay high here -> the clearance reference itself is
+                              RL-hostile; back to the solver (lower
+                              floor / different nodes), no GPU spent
+                              on terrain.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.traj_ref.path = "lpa_lib/trajectories/walk_forward_clear4"

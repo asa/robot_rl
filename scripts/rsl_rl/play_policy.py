@@ -34,6 +34,7 @@ SIM_ENVIRONMENTS = {
     # train_policy: the maps are separate, and a miss is a KeyError
     # at close-out, hours after training ends.
     "lpa_walking_clf_hist": "LPA-walking-clf-hist",
+    "lpa_walking_clf_hist_clear4": "LPA-walking-clf-hist-clear4",
 
     "vanilla": "G1-vanilla-walking",
     "lip_clf": "G1-lip-ref-play",
