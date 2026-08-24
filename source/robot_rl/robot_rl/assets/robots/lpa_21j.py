@@ -160,43 +160,65 @@ LPA_CFG = ArticulationCfg(
 )
 """Configuration for the TINH LPA humanoid (21 actuated joints)."""
 
-# INTERIM ARM ROM — NOT a hardware spec (bead tinh-ed92).
+# ARM ROM — measured hardware values (Asa, 2026-08-24).
 #
-# Every arm joint in the URDF reads lower=-3.142 upper=3.142. That is
-# not an oversight in the exporter: 210 of 216 Onshape mates have
-# limitsEnabled:false, so the URDF generator substitutes
-# --default-revolute-limits. Only 6 mates carry real limits (torso
-# PITCH/ROLL, foot ARCH/ARCH_REAR/TOE, one slider) and those are
-# exactly the ones that reached the URDF. The pipeline works; the CAD
-# has no arm limits to export, and the physical stops are an unstarted
-# design task (tinh-68fv).
+#   elbows          +/- 90 deg
+#   shoulder yaw    +/- 90 deg
+#   shoulder roll   15 deg adduction / 120 deg abduction
+#   shoulder pitch  100 deg forward / 90 deg backward
 #
-# CONSEQUENCE WITHOUT THIS TABLE: SHOULDER_ROLL gets 6.283 rad where
-# the approved walk uses 0.080 — 78x — and RL policies fold the arms
-# across the chest as a rough-terrain balance strategy. User rejected
-# those videos 2026-08-24. dof_pos_limits cannot fire against +/-pi.
+# Sign conventions, matching the exported references: forward pitch is
+# NEGATIVE (the throw chambers negative), and for the LEFT arm positive
+# roll is ABDUCTION. The mirror relabel negates only ROLL/YAW/WRIST, so
+# pitch and elbow are stated identically on both sides while roll
+# mirrors.
 #
-# DERIVED as (union of every USER-APPROVED reference, measured on the
-# Bezier FIT that Isaac actually tracks, not the raw solve) + 0.13 rad
-# margin = reset joint_add_range 0.10 + measured fit overshoot 0.03.
-# The binding constraint is the THROW chamber (-2.8134 rad shoulder
-# pitch), NOT the walk. Pitch therefore stays wide; the fix bites in
-# ROLL (adduction) and YAW (internal rotation), which is where the
-# fold-across-chest strategy actually lives — only 0.15 rad of
-# adduction past neutral, so the arm cannot cross the chest.
+# These replace the +/-pi the URDF carries. That is a FALLBACK, not an
+# oversight: 210 of 216 Onshape mates have limitsEnabled:false, so the
+# exporter substitutes --default-revolute-limits. The 6 mates that do
+# carry limits (torso PITCH/ROLL, foot ARCH/ARCH_REAR/TOE, one slider)
+# are exactly the ones that reached the URDF -- the pipeline works, the
+# CAD simply has no arm limits to export.
 #
-# Symmetric on pitch/elbow so a MIRRORED left-handed throw stays
-# legal (the mirror relabel negates only ROLL/YAW/WRIST). If a
-# left-handed throw is ruled out, the left arm can narrow a lot.
+# WITHOUT THESE: SHOULDER_ROLL had 6.283 rad where the approved walk
+# uses 0.080, and RL policies folded the arms across the chest as a
+# rough-terrain balance strategy (user rejected those videos
+# 2026-08-24). Adduction is now 15 deg, so the arm cannot cross the
+# chest.
+#
+# TWO BANDS ARE WIDENED PAST THE STATED HARDWARE ROM, at Asa's
+# direction 2026-08-24 ("allow throw limits"), so the approved throw
+# stays legal:
+#
+#   pitch FORWARD  -2.95 rad (169 deg) vs the stated 100 deg
+#   elbow FLEXION  -2.20 rad (126 deg) vs the stated 90 deg
+#
+# The approved throw rides R_SHOULDER_PITCH to -2.800 and R_ELBOW to
+# -2.050 (it was solved against the +/-pi placeholders, so the solver
+# was free to use range the arm may not have). Widening keeps throw37
+# trainable rather than invalidating a user-approved behaviour.
+#
+# THIS IS A KNOWN TENSION, NOT A MEASUREMENT: if the hardware truly
+# stops at 100 deg forward / 90 deg elbow, the throw is not executable
+# as solved and must be re-solved against the tighter band before it
+# ships. Backward pitch, both yaws and both rolls are the stated
+# hardware values untouched -- and roll is where the rejected
+# fold-across-chest behaviour lived, so the fix still bites.
+#
+# CHECKED: both walk libraries and the scan sit inside these bands.
 LPA_ARM_ROM: dict[str, tuple[float, float]] = {
-    "L_SHOULDER_PITCH": (-2.95, 0.80),
-    "R_SHOULDER_PITCH": (-2.95, 0.80),
-    "L_SHOULDER_ROLL": (-0.15, 0.60),
-    "R_SHOULDER_ROLL": (-0.60, 0.15),
-    "L_SHOULDER_YAW": (-1.05, 0.80),
-    "R_SHOULDER_YAW": (-0.80, 1.05),
-    "L_ELBOW": (-2.20, 0.10),
-    "R_ELBOW": (-2.20, 0.10),
+    # forward WIDENED to -169 deg for the throw (stated ROM: 100 deg);
+    # backward is the stated 90 deg
+    "L_SHOULDER_PITCH": (-2.9500, 1.5708),
+    "R_SHOULDER_PITCH": (-2.9500, 1.5708),
+    # left: -15 deg adduction .. +120 deg abduction; right mirrors
+    "L_SHOULDER_ROLL": (-0.2618, 2.0944),
+    "R_SHOULDER_ROLL": (-2.0944, 0.2618),
+    "L_SHOULDER_YAW": (-1.5708, 1.5708),
+    "R_SHOULDER_YAW": (-1.5708, 1.5708),
+    # flexion WIDENED to -126 deg for the throw (stated ROM: 90 deg)
+    "L_ELBOW": (-2.2000, 1.5708),
+    "R_ELBOW": (-2.2000, 1.5708),
 }
 
 LPA_ACTION_SCALE = {}
