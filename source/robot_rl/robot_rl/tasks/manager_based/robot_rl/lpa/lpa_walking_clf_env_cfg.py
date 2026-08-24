@@ -799,9 +799,21 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         # re-enable without a mechanism and a matched-control read.
         self.commands.traj_ref.contact_gate = False
 
-        # Proprioceptive history -- see apply_obs_history above for
-        # why, and why it is the actor only.
-        apply_obs_history(self.observations)
+        # Proprioceptive history: OFF for rough (2026-08-24).
+        #
+        # It was added here during the clear4 work and was one of the
+        # hypotheses this hunt ELIMINATED -- a 10-frame history was
+        # measured no better than none. It also inflates the actor
+        # input from 74 to 695, so the flat keeper cannot be resumed
+        # into this env without a checkpoint remap, adding a step and a
+        # variable to every rough experiment.
+        #
+        # With it off, a rough run resumed from the flat keeper differs
+        # by terrain and the collision asset alone, which is the
+        # question actually being asked. Re-enable via
+        # apply_obs_history(self.observations) if history is ever
+        # tested on purpose, and remap the checkpoint with
+        # scripts/expand_obs_history.py.
 
         # CLEARANCE REFERENCE (tinh-nwgy, user-approved 2026-08-23).
         # Same stomp solve plus a hard 4 cm swing-foot clearance floor
