@@ -160,6 +160,45 @@ LPA_CFG = ArticulationCfg(
 )
 """Configuration for the TINH LPA humanoid (21 actuated joints)."""
 
+# INTERIM ARM ROM — NOT a hardware spec (bead tinh-ed92).
+#
+# Every arm joint in the URDF reads lower=-3.142 upper=3.142. That is
+# not an oversight in the exporter: 210 of 216 Onshape mates have
+# limitsEnabled:false, so the URDF generator substitutes
+# --default-revolute-limits. Only 6 mates carry real limits (torso
+# PITCH/ROLL, foot ARCH/ARCH_REAR/TOE, one slider) and those are
+# exactly the ones that reached the URDF. The pipeline works; the CAD
+# has no arm limits to export, and the physical stops are an unstarted
+# design task (tinh-68fv).
+#
+# CONSEQUENCE WITHOUT THIS TABLE: SHOULDER_ROLL gets 6.283 rad where
+# the approved walk uses 0.080 — 78x — and RL policies fold the arms
+# across the chest as a rough-terrain balance strategy. User rejected
+# those videos 2026-08-24. dof_pos_limits cannot fire against +/-pi.
+#
+# DERIVED as (union of every USER-APPROVED reference, measured on the
+# Bezier FIT that Isaac actually tracks, not the raw solve) + 0.13 rad
+# margin = reset joint_add_range 0.10 + measured fit overshoot 0.03.
+# The binding constraint is the THROW chamber (-2.8134 rad shoulder
+# pitch), NOT the walk. Pitch therefore stays wide; the fix bites in
+# ROLL (adduction) and YAW (internal rotation), which is where the
+# fold-across-chest strategy actually lives — only 0.15 rad of
+# adduction past neutral, so the arm cannot cross the chest.
+#
+# Symmetric on pitch/elbow so a MIRRORED left-handed throw stays
+# legal (the mirror relabel negates only ROLL/YAW/WRIST). If a
+# left-handed throw is ruled out, the left arm can narrow a lot.
+LPA_ARM_ROM: dict[str, tuple[float, float]] = {
+    "L_SHOULDER_PITCH": (-2.95, 0.80),
+    "R_SHOULDER_PITCH": (-2.95, 0.80),
+    "L_SHOULDER_ROLL": (-0.15, 0.60),
+    "R_SHOULDER_ROLL": (-0.60, 0.15),
+    "L_SHOULDER_YAW": (-1.05, 0.80),
+    "R_SHOULDER_YAW": (-0.80, 1.05),
+    "L_ELBOW": (-2.20, 0.10),
+    "R_ELBOW": (-2.20, 0.10),
+}
+
 LPA_ACTION_SCALE = {}
 for _a in LPA_CFG.actuators.values():
     # Implicit actuators carry effort_limit_sim; explicit (DCMotor)

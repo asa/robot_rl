@@ -25,7 +25,8 @@ from robot_rl.tasks.manager_based.robot_rl import mdp
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
-from robot_rl.assets.robots.lpa_21j import LPA_MINIMAL_CFG, LPA_ACTION_SCALE  # isort: skip
+from robot_rl.assets.robots.lpa_21j import (  # isort: skip
+    LPA_MINIMAL_CFG, LPA_ACTION_SCALE, LPA_ARM_ROM)
 from ..mdp.commands.velocity_commands_cfg import VelocityTrackingCommandCfg
 from robot_rl.tasks.manager_based.robot_rl.mdp.commands.traj_tracking.trajectory_cmd_cfg import TrajectoryCommandCfg
 
@@ -406,6 +407,30 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
 
         # LPA stands at 1.06 m (G1: 0.785) — raise the fall floor.
         self.terminations.base_height.params["minimum_height"] = 0.6
+
+        # HARD ARM ROM (bead tinh-ed92). Written into PhysX at startup
+        # rather than into the URDF: the URDF has ~29 consumers and
+        # feeds the trajopt NLP that produced the committed CLF
+        # library, and a URDF change would not even reach a trajopt
+        # solve (registry.py ASSIGNS custom_limits rather than
+        # intersecting, and every LPA config declares all 21 joints).
+        # write_joint_position_limit_to_sim also recomputes the soft
+        # limits, so dof_pos_limits becomes meaningful for the first
+        # time. Grouped by identical band to keep the term count down.
+        _rom_groups: dict[tuple[float, float], list[str]] = {}
+        for _j, _band in LPA_ARM_ROM.items():
+            _rom_groups.setdefault(_band, []).append(_j)
+        for _i, (_band, _joints) in enumerate(sorted(_rom_groups.items())):
+            setattr(self.events, f"arm_rom_{_i}", EventTerm(
+                func=mdp.randomize_joint_parameters,
+                mode="startup",
+                params={
+                    "asset_cfg": SceneEntityCfg("robot", joint_names=_joints),
+                    "lower_limit_distribution_params": (_band[0], _band[0]),
+                    "upper_limit_distribution_params": (_band[1], _band[1]),
+                    "operation": "abs",
+                },
+            ))
 
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
