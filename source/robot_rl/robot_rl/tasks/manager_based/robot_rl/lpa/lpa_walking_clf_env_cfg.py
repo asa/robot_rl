@@ -776,6 +776,26 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         self.scene.terrain.terrain_type = "generator"
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
 
+        # TERRAIN CURRICULUM (2026-08-25). Two halves, both needed:
+        # lpa_rough_terrain now uses a difficulty-RESPECTING function
+        # (isaaclab's random_uniform ignores difficulty, so the ladder
+        # was five identical rows), and the promotion term below is
+        # re-enabled here because the base LPA env sets it to None for
+        # its flat plane and the rough env inherited that.
+        #
+        # Robots start on row 0 (5 mm ceiling, walkable by the incoming
+        # flat keeper) and are promoted a row when they traverse past
+        # half a patch. Roughness then tracks competence instead of
+        # sitting at the 20 mm ceiling from iteration zero -- which is
+        # what rough1..rough16 all did.
+        from isaaclab.managers import CurriculumTermCfg as _CurrT
+
+        from robot_rl.tasks.manager_based.robot_rl.mdp.curriculums import (
+            curriculums as _curr,
+        )
+
+        self.curriculum.terrain_levels = _CurrT(func=_curr.terrain_levels)
+
         # CONTACT-GATED REFERENCE CLOCK (rough1-8 forensics).
         #
         # The measured failure is a TIME-INDEXING pathology, not a

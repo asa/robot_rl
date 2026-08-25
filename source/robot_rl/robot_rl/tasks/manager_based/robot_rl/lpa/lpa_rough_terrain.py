@@ -62,28 +62,70 @@ needs a difficulty-respecting terrain function, which is a follow-up
 rather than a claim made in a comment.
 """
 
+from dataclasses import MISSING
+
 import isaaclab.terrains as terrain_gen
 from isaaclab.terrains import TerrainGeneratorCfg
+from isaaclab.terrains.height_field import hf_terrains
+from isaaclab.terrains.height_field.hf_terrains_cfg import (
+    HfRandomUniformTerrainCfg,
+)
+from isaaclab.utils import configclass
+
+
+def graded_random_uniform(difficulty: float, cfg):
+    """random_uniform_terrain, but RESPECTING difficulty.
+
+    isaaclab's random_uniform_terrain says outright that "the difficulty
+    parameter is IGNORED", so a TerrainGeneratorCfg with curriculum=True
+    silently produces five identical rows and the promotion ladder
+    climbs nothing. This wrapper is the difficulty-respecting function
+    the module docstring called for.
+
+    Difficulty scales the noise CEILING, not the floor: every row keeps
+    the same 5 mm minimum so the easy rows are gently uneven rather
+    than perfectly flat (the flat sub-terrain already supplies true
+    plane), and row 0 is a surface the incoming flat policy can walk
+    immediately.
+    """
+    graded = cfg.copy()
+    lo, hi = cfg.noise_range
+    graded.noise_range = (lo, lo + (hi - lo) * float(difficulty))
+    return hf_terrains.random_uniform_terrain(difficulty, graded)
+
+
+@configclass
+class GradedRandomUniformTerrainCfg(HfRandomUniformTerrainCfg):
+    """HfRandomUniformTerrainCfg wired to the graded function above."""
+
+    function = graded_random_uniform
 
 ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     size=(8.0, 8.0),
     border_width=20.0,
-    # Rows are NOT a difficulty ladder here -- random_uniform ignores
-    # difficulty (see docstring). They are simply more patch variety.
-    num_rows=5,
+    # Rows ARE a difficulty ladder now: GradedRandomUniformTerrainCfg
+    # respects difficulty, so row r gets a noise ceiling of
+    # 0.005 + 0.015 * r/(num_rows-1) -- 5 mm at row 0 up to 20 mm at
+    # row 9. Ten rows rather than five so each promotion is a small
+    # step; a blind policy that is promoted too far at once falls
+    # rather than adapts.
+    num_rows=10,
     num_cols=4,
     horizontal_scale=0.1,
     vertical_scale=0.005,
     slope_threshold=0.75,
     use_cache=False,
-    # No ladder to climb: every row is the same distribution.
-    curriculum=False,
+    # The ladder is real now. Robots are promoted a row when they
+    # traverse past half a patch and demoted when they do not, so the
+    # roughness a policy sees follows its own competence instead of
+    # being fixed at the ceiling from iteration zero.
+    curriculum=True,
     sub_terrains={
         # Flat stays a large share: it is the surface that actually
         # ships, and the previous run proved the styled gait is lost
         # if the policy rarely sees it.
         "flat": terrain_gen.MeshPlaneTerrainCfg(proportion=0.4),
-        "rough": terrain_gen.HfRandomUniformTerrainCfg(
+        "rough": GradedRandomUniformTerrainCfg(
             proportion=0.6,
             noise_range=(0.005, 0.02),
             noise_step=0.005,
