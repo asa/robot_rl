@@ -15,7 +15,7 @@ ENVIRONMENTS = {
     "lpa_walking_clf_graphturn": "LPA-walking-clf-graphturn",
     "lpa_walking_clf_ramp": "LPA-walking-clf-ramp",  # tinh-lpa-ramp.5
     "lpa_walking_clf_rough": "LPA-walking-clf-rough",  # terrain robustness
-    "lpa_walking_clf_rough_v2": "LPA-walking-clf-rough-v2",  # + fall pricing
+    "lpa_walking_clf_rough_v2": "LPA-walking-clf-rough-priced",  # + fall pricing
     # Flat + obs history: the play/export env for history policies,
     # which cannot load into the 74-obs plain flat env.
     "lpa_walking_clf_hist": "LPA-walking-clf-hist",

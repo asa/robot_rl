@@ -59,7 +59,7 @@ if not _registered:
     )
 
     gym.register(
-        id="LPA-walking-clf-rough-v2",
+        id="LPA-walking-clf-rough-priced",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",
         disable_env_checker=True,
         kwargs={
