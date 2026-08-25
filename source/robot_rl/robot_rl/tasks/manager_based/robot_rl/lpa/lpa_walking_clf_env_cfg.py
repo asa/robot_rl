@@ -823,7 +823,21 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
         # Conditioner vel_x=0.5612 is identical to the keeper, so
         # command spans need no recentering. ROUGH ENV ONLY -- flat
         # keeps the keeper library for the like-for-like ablation.
-        self.commands.traj_ref.path = "lpa_lib/trajectories/walk_forward_clear4"
+        # walk_forward, NOT walk_forward_clear4 (2026-08-25).
+        #
+        # This line said clear4 while the class docstring above says
+        # "same walk_forward library". rough15 resumed pendulum9b --
+        # trained on walk_forward -- and tracked clear4 for 600
+        # iterations before the swap was visible, making the run
+        # uninterpretable: it changed terrain, the collision asset AND
+        # the reference at once.
+        #
+        # clear4 is also not what its own docstring claims: it changed
+        # the arms wholesale rather than only adding a swing-clearance
+        # floor, its conditioner is 0.5612 against the keeper's 0.5964
+        # (6.8% period difference), and refcheck flags 11 undeclared
+        # channels, worst SHOULDER_YAW at 0.538 rad RMS.
+        self.commands.traj_ref.path = "lpa_lib/trajectories/walk_forward"
 
         # (The 0.58 -> 0.29 speed reduction was prepared for rough6
         # and pulled back out: observation history is the change
