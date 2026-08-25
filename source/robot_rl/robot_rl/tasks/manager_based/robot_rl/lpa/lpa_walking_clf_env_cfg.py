@@ -26,7 +26,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from robot_rl.assets.robots.lpa_21j import (  # isort: skip
-    LPA_MINIMAL_CFG, LPA_ACTION_SCALE, LPA_ARM_ROM)
+    LPA_MINIMAL_CFG, LPA_ACTION_SCALE, LPA_ARM_ROM, LPA_LEG_ROM)
 from ..mdp.commands.velocity_commands_cfg import VelocityTrackingCommandCfg
 from robot_rl.tasks.manager_based.robot_rl.mdp.commands.traj_tracking.trajectory_cmd_cfg import TrajectoryCommandCfg
 
@@ -432,8 +432,10 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
                 ".*_HIP_.*", ".*_KNEE", ".*_ANKLE",
                 "WAIST_YAW", "TORSO_PITCH", "TORSO_ROLL"])
 
+        # Arms AND ankles: same startup-event mechanism, one event per
+        # distinct band so joints sharing a band share a term.
         _rom_groups: dict[tuple[float, float], list[str]] = {}
-        for _j, _band in LPA_ARM_ROM.items():
+        for _j, _band in {**LPA_ARM_ROM, **LPA_LEG_ROM}.items():
             _rom_groups.setdefault(_band, []).append(_j)
         for _i, (_band, _joints) in enumerate(sorted(_rom_groups.items())):
             setattr(self.events, f"arm_rom_{_i}", EventTerm(

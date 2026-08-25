@@ -221,6 +221,19 @@ LPA_ARM_ROM: dict[str, tuple[float, float]] = {
     "R_ELBOW": (-2.2000, 1.5708),
 }
 
+# Ankle pitch, +-45 deg (user 2026-08-25).
+#
+# The URDF band is wider than the joint is meant to travel, and a blind
+# policy on rough ground uses whatever it is given: the ankle is the
+# joint in contact with the disturbance, so an over-wide band lets it
+# answer a stubbed toe with a pedal stroke rather than a step. The
+# stomp references themselves stay well inside +-0.7 rad, so this
+# clamps the policy's escape hatch without touching the gait.
+LPA_LEG_ROM: dict[str, tuple[float, float]] = {
+    "L_ANKLE": (-0.7854, 0.7854),
+    "R_ANKLE": (-0.7854, 0.7854),
+}
+
 LPA_ACTION_SCALE = {}
 for _a in LPA_CFG.actuators.values():
     # Implicit actuators carry effort_limit_sim; explicit (DCMotor)
