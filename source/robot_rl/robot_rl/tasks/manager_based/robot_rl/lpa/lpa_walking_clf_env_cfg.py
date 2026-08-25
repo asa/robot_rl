@@ -925,6 +925,37 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
             func=mdp.base_height_above_feet,
             params={"minimum_height": 0.6})
 
+        # ---- fall pricing (tinh-as7q.22) -------------------------
+        # rough17 measured 50.7% of steps tipped past 60 deg from
+        # vertical WITHOUT terminating: base_height is measured
+        # above the FEET, so a face-down torso trailing its legs
+        # still satisfies it. Prone time was therefore accruing
+        # reward, and the backwards arm fling that buys a few more
+        # prone steps was being reinforced. Both terms below end
+        # the episode instead.
+        #
+        # bad_orientation is projected-gravity based -- no reference
+        # outputs needed (mdp.base_orientation reads
+        # cmd.ordered_output_names, which exists nowhere in this
+        # tree, hence it is commented out in both g1 envs) and it
+        # reads true tilt on a slope, which is what we want: the
+        # torso balances against gravity, not the terrain normal.
+        # 50 deg sits well clear of any commanded walking lean.
+        self.terminations.bad_orientation = _DoneT(
+            func=mdp.bad_orientation,
+            params={"limit_angle": math.radians(50.0)})
+
+        # Chest/head hitting the ground. Only detectable as of the
+        # 2026-08-25 collider pass -- TORSO_ROLL carries the torso
+        # spheres and the head sphere; before that it had no
+        # collision geometry at all, so a faceplant registered zero
+        # contact force.
+        self.terminations.torso_contact = _DoneT(
+            func=mdp.illegal_contact,
+            params={"sensor_cfg": SceneEntityCfg(
+                        "contact_forces", body_names="TORSO_ROLL"),
+                    "threshold": 1.0})
+
 
 @configclass
 class LpaWalkingCLFHistEnvCfg(LpaWalkingCLFEnvCfg):
