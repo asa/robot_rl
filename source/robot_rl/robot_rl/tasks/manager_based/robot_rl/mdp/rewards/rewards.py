@@ -540,6 +540,78 @@ def body_upright_roll(env,
     return torch.square(g_b[:, 1])
 
 
+def forward_progress_heading(env, command_name: str,
+                             upright_gate: bool = True,
+                             asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """tinh: forward_progress measured in the YAW-ONLY heading frame.
+
+    forward_progress reads root_lin_vel_b[:, 0] -- body-frame X. That
+    axis tilts with PITCH, so during a forward faceplant it rotates to
+    point partly downward and the fall velocity projects onto it:
+
+        v . x_b = v_fwd cos(theta) - v_down sin(theta)
+
+    with v_down < 0 while falling, BOTH terms are positive. A faceplant
+    scores as forward progress, and at weight 10 this was 43% of all
+    positive reward -- the single largest incentive in the stack was
+    partly satisfied by falling over (measured 2026-08-25, rough17:
+    50.66% of steps beyond 60 deg from vertical).
+
+    Projecting onto the yaw-only heading instead makes the reference
+    axis horizontal by construction, so vertical motion contributes
+    exactly zero however far the torso has pitched.
+
+    upright_gate additionally zeroes the reward past 60 deg of tilt, so
+    a robot that is already going down cannot bank progress on the way.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command(command_name)
+
+    v_heading = quat_rotate_inverse(yaw_quat(asset.data.root_quat_w),
+                                    asset.data.root_lin_vel_w)
+    v_x = v_heading[:, 0]
+
+    cmd_x = cmd[:, 0]
+    denom = torch.clamp(torch.abs(cmd_x), min=0.1)
+    r = torch.clamp(v_x * torch.sign(cmd_x) / denom, -1.0, 1.0)
+
+    if upright_gate:
+        upright = -asset.data.projected_gravity_b[:, 2]   # 1.0 upright
+        r = torch.where(upright > math.cos(math.radians(60.0)),
+                        r, torch.zeros_like(r))
+    return r
+
+
+def body_upright_pitch(env,
+                       deadband_deg: float = 15.0,
+                       asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+                       ) -> torch.Tensor:
+    """tinh: L2 penalty on a BODY's world PITCH tilt, outside a deadband.
+
+    body_upright_roll penalises g_b[1] (lateral) and says outright
+    "Pitch is left free" -- so before this, NOTHING in the reward stack
+    priced a forward fall. The only forward-pitch signal was the
+    torso_contact termination, which is a cliff at the moment of impact
+    with no gradient leading up to it.
+
+    The deadband exists because the walking reference carries a real
+    forward lean; penalising absolute pitch would fight the trajectory
+    the policy is being paid to track. Beyond it the penalty grows
+    quadratically, so there is a slope pointing away from the fall well
+    before the 50 deg bad_orientation termination fires.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    body_id = asset_cfg.body_ids[0]
+    quat = asset.data.body_quat_w[:, body_id]
+    g_w = torch.tensor([0.0, 0.0, -1.0], device=quat.device).expand(
+        quat.shape[0], 3)
+    g_b = quat_rotate_inverse(quat, g_w)
+    # x-component = fore/aft tilt. Positive and negative pitch both cost.
+    tilt = torch.abs(g_b[:, 0])
+    dead = math.sin(math.radians(deadband_deg))
+    return torch.square(torch.clamp(tilt - dead, min=0.0))
+
+
 def forward_progress(env, command_name: str,
                      asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """tinh: signed, capped, LINEAR forward-velocity reward.

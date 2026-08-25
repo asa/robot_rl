@@ -958,6 +958,71 @@ class LpaWalkingCLFRoughEnvCfg(LpaWalkingCLFEnvCfg):
 
 
 @configclass
+class LpaWalkingCLFRoughV2EnvCfg(LpaWalkingCLFRoughEnvCfg):
+    """Rough walking with the fall priced and the CLF gradient restored.
+
+    Four changes against LpaWalkingCLFRoughEnvCfg, all aimed at the
+    same measured failure: rough17 spent 50.66% of steps beyond 60 deg
+    from vertical, and the reward stack was partly PAYING for it.
+
+    1. progress -> forward_progress_heading. The old term read
+       body-frame X velocity, an axis that tilts with pitch, so a
+       forward fall projected onto it positively. At weight 10 that
+       was 43% of all positive reward.
+
+    2. torso_pitch, new. body_upright_roll penalises roll only and its
+       docstring says "Pitch is left free", so nothing priced a
+       forward fall except the termination cliff. This is the ramp
+       leading up to it, outside a 15 deg deadband so the reference's
+       own forward lean stays free.
+
+    3. clf_reward back on. Per Olkin et al. (arXiv 2605.01978) Thm 1/3,
+       exponential stability follows from the DECAY condition, not the
+       exponential -- so running without it was never a stability bug.
+       But the decay term measures Vdot (is it converging) while the
+       exponential measures V (how far off-orbit it is), and ours is
+       clipped to [0,1]. With the exponential off AND the decay
+       saturated, a robot deeply off-orbit converging slowly scores
+       identically to one near the orbit converging slowly. That flat
+       region is where the arm flail lives. Note the CLF-RL ablation
+       (arXiv 2508.09354) compared tracking-only vs tracking+decay and
+       never tested decay-only, which is what we were running.
+
+    4. num_steps_per_env 24 -> 48 (see agents/rsl_rl_ppo_cfg.py).
+       gamma*lam = 0.9405 gives an 11.3-step credit half-life = 0.23 s
+       at 50 Hz, and the rollout was 24 steps = 0.48 s. The arm fling
+       precedes torso contact by longer than that, so the terminal
+       signal decayed before reaching the action that caused it.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        import math as _math
+        from isaaclab.managers import RewardTermCfg as _RewT
+
+        # 1. Progress in the yaw-only heading frame, gated on upright.
+        self.rewards.progress = _RewT(
+            func=mdp.forward_progress_heading, weight=10.0,
+            params={"command_name": "base_velocity", "upright_gate": True})
+
+        # 2. Price forward pitch, with a slope rather than a cliff.
+        #    Same body and weight as chest_upright, which handles roll.
+        self.rewards.torso_pitch = _RewT(
+            func=mdp.body_upright_pitch, weight=-8.0,
+            params={"deadband_deg": 15.0,
+                    "asset_cfg": SceneEntityCfg(
+                        "robot", body_names=["TORSO_ROLL"])})
+
+        # 3. Restore the off-orbit DISTANCE signal. max_eta_err 0.8 is
+        #    the G1TrajOptCLFRewards default and the largest of the
+        #    values tried upstream; larger widens max_clf, which is
+        #    what pushes the saturation knee further out.
+        self.rewards.clf_reward = _RewT(
+            func=mdp.clf_reward, weight=10.0,
+            params={"command_name": "traj_ref", "max_eta_err": 0.8})
+
+
+@configclass
 class LpaWalkingCLFHistEnvCfg(LpaWalkingCLFEnvCfg):
     """FLAT walking with proprioceptive history — the play/export env
     for history policies.
