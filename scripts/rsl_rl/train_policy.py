@@ -390,16 +390,58 @@ def main():
         # runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
         runner.add_git_repo_to_log(__file__)
 
+        # ---- terrain-curriculum state rides in the checkpoint ------
+        # rsl_rl save() stores model+optimizer only, so a resumed run
+        # restarted the terrain ladder at row 0 — which is why the
+        # 2026-08-25 disk-upgrade question had no good answer ("a
+        # mid-run stop truncates the experiment"). save() already
+        # takes an infos dict and load() already returns it; we ride
+        # the curriculum tensors in it. Wrapping runner.save is the
+        # only way in without forking the rsl_rl learn loop.
+        def _terrain(env_obj):
+            scene = getattr(getattr(env_obj, "unwrapped", env_obj),
+                            "scene", None)
+            t = getattr(scene, "terrain", None) if scene else None
+            return t if getattr(t, "terrain_levels", None) is not None \
+                else None
+
+        _orig_save = runner.save
+
+        def _save_with_curriculum(path, infos=None):
+            t = _terrain(env)
+            if t is not None:
+                infos = dict(infos or {})
+                infos["terrain_levels"] = t.terrain_levels.detach().cpu()
+                infos["terrain_types"] = t.terrain_types.detach().cpu()
+            return _orig_save(path, infos)
+
+        runner.save = _save_with_curriculum
+
         # Load checkpoint if resuming
         if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
             print(f"[INFO]: Loading model checkpoint from: {resume_path}")
             try:
-                runner.load(resume_path)
+                _infos = runner.load(resume_path)
             except KeyError:
                 # Padded checkpoints (pad_checkpoint_obs, 8.5d) drop
                 # the optimizer state — resume weights-only.
                 print("[INFO] no optimizer state — weights only")
-                runner.load(resume_path, load_optimizer=False)
+                _infos = runner.load(resume_path, load_optimizer=False)
+            t = _terrain(env)
+            if t is not None and isinstance(_infos, dict) \
+                    and "terrain_levels" in _infos:
+                # Restore the ladder, then re-derive env origins the
+                # same way update_env_origins does.
+                dev = t.terrain_levels.device
+                t.terrain_levels[:] = _infos["terrain_levels"].to(dev)
+                t.terrain_types[:] = _infos["terrain_types"].to(dev)
+                t.env_origins[:] = t.terrain_origins[
+                    t.terrain_levels, t.terrain_types]
+                print(f"[INFO] terrain curriculum restored: mean level "
+                      f"{t.terrain_levels.float().mean():.2f}")
+            elif t is not None:
+                print("[INFO] checkpoint carries no terrain state — "
+                      "curriculum starts at init levels")
 
         # Save configurations
         dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)

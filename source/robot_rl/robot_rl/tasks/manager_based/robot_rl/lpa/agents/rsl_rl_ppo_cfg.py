@@ -28,3 +28,10 @@ class PPORunnerCfgH48(PPORunnerCfg):
     """
 
     num_steps_per_env = 48
+
+    # ~16 min between checkpoints at rough-v2 throughput (100 iters x
+    # 9.6 s). The 200-iter default meant a mid-run stop lost up to 32
+    # minutes; checkpoints are 6 MB, so density is nearly free. Set
+    # here rather than the shared G1 base so G1 envs keep upstream
+    # behaviour.
+    save_interval = 100
