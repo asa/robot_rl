@@ -270,6 +270,14 @@ print("[DEBUG] Launching Omniverse app")
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
+# Kit traps SIGTERM for a graceful shutdown that in practice hangs;
+# timeout wrappers then wait out --kill-after and orphaned kit
+# children survive (closeout.sh needs a trailing pkill -9). Override
+# AFTER kit installs its handler: hard exit, skipping kit teardown
+# (stdout is already unbuffered via -u).
+import os as _os, signal as _signal
+_signal.signal(_signal.SIGTERM, lambda *_: _os._exit(143))
+
 def main():
     # args_cli, hydra_args = parse_args()
     
