@@ -79,6 +79,27 @@ def joint_pos_reward(env: ManagerBasedRLEnv, command_name: str, sigma: float) ->
 
     return torch.exp(-KAPPA * v_joint_pos / sigma)
 
+def joint_pos_group_error_l2(env: ManagerBasedRLEnv, command_name: str,
+                             group: str) -> torch.Tensor:
+    """||eta_group|| — LINEAR tracking distance to the reference.
+
+    The exp form above cannot RETRIEVE a limb once it leaves the
+    basin (gradient ~ exp(-KAPPA*v/sigma) vanishes at large v —
+    rough21 walked 3400 iters with both arms wrapped at chest level
+    and Episode_Reward/joint_pos_arms flat at ~0.13). Stability of
+    CLF-RL (arXiv 2605.01978) Lemma 5 sandwiches the exponential by
+    LINEAR costs on sublevel sets — the exponential is training
+    numerics, not the guarantee — so a linear-in-error penalty
+    toward the REFERENCE (not a fixed pose) is the theory-consistent
+    retrieval term: constant-magnitude gradient at any distance,
+    and it vanishes exactly on-orbit, so it cannot fight the style.
+
+    Use with a NEGATIVE weight."""
+    cmd_term = env.command_manager.get_term(command_name)
+    v = cmd_term.clf.v_subgroups[f"joint_pos_{group}"]
+    return torch.sqrt(v + 1e-8)
+
+
 def joint_pos_group_reward(env: ManagerBasedRLEnv, command_name: str,
                            sigma: float, group: str) -> torch.Tensor:
     """joint_pos tracking for ONE limb group: legs / arms / torso.

@@ -1024,6 +1024,37 @@ class LpaWalkingCLFRoughV2EnvCfg(LpaWalkingCLFRoughEnvCfg):
 
 @configclass
 
+class LpaWalkingCLFRoughV4EnvCfg(LpaWalkingCLFRoughV2EnvCfg):
+    """V2 + LINEAR arm retrieval toward the reference (supersedes the
+    V3 joint_deviation_l1 experiment before its results are in).
+
+    V3's arms_home pulled toward the STATIC carriage default, which
+    fights the reference whenever the style moves the arms. The
+    corpus fix (Stability of CLF-RL, Lemma 5: linear costs sandwich
+    the exponential on sublevel sets) is a linear penalty on the arm
+    subgroup's tracking error itself: -w * ||eta_arms||. Constant
+    retrieval gradient at any distance, zero on-orbit, aimed at the
+    reference.
+
+    Kept from the V3 reasoning: joint_pos_arms sigma 0.2 -> 0.5 per
+    joint (basin reach). NOT touched: the clf_decreasing_condition
+    clamp (eta_max 0.25 flattens off-orbit V-dot gradient, measured
+    max_violation 1.95) — raising it rescales the WHOLE-BODY penalty
+    and is the next lever, not this run's.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        import math as _math
+        from isaaclab.managers import RewardTermCfg as _RewT
+        from robot_rl.tasks.manager_based.robot_rl import mdp as _mdp
+
+        self.rewards.joint_pos_arms.params["sigma"] = 0.5 * _math.sqrt(8)
+        self.rewards.arms_track_linear = _RewT(
+            func=_mdp.joint_pos_group_error_l2, weight=-0.5,
+            params={"command_name": "traj_ref", "group": "arms"})
+
+
 class LpaWalkingCLFRoughV3EnvCfg(LpaWalkingCLFRoughV2EnvCfg):
     """V2 + the arm-retrieval package (rough21 wrapped-arms fix).
 
