@@ -364,6 +364,7 @@ class CLF:
 
         # Compute V = eta^T P eta
         V = torch.einsum('bi,ij,bj->b', eta, P, eta)
+        self.eta = eta  # exposed for per-joint reward terms (v5)
 
         # Compute per-subgroup V contributions (for logging/debugging)
         self.v_subgroups = {}
