@@ -1023,6 +1023,53 @@ class LpaWalkingCLFRoughV2EnvCfg(LpaWalkingCLFRoughEnvCfg):
 
 
 @configclass
+
+class LpaWalkingCLFRoughV3EnvCfg(LpaWalkingCLFRoughV2EnvCfg):
+    """V2 + the arm-retrieval package (rough21 wrapped-arms fix).
+
+    rough21 (v2, 4500 iters) walked with both arms wrapped at chest
+    level -- L forearm across the front, R behind. Diagnosis from the
+    run data: the wrap is INSIDE the hard ROM (roll pinned at its
+    floor, yaw +-90 + elbow flexion carries the forearm across), and
+    joint_pos_arms = exp(-KAPPA*v/sigma) has no gradient out there --
+    Episode_Reward/joint_pos_arms collapsed to ~0.13 in the first
+    1100 iters as the terrain curriculum hit 5.5 and flatlined for
+    the remaining 3400 while clf_reward kept climbing. The exp can
+    HOLD arms near reference but cannot RETRIEVE them; wrapped arms
+    then do balance work for free (corr(arm pitch rate, base pitch
+    rate) = -0.162, torque cost 1e-5).
+
+    Two changes, both retrieval-side (dof_pos_limits stays scoped to
+    legs+waist -- the soft-edge midpoint shrink would punish the
+    user-approved throw chamber, see the HARD ARM ROM comment):
+
+    1. arms_home: joint_deviation_l1 on the 8 arm joints, the
+       waist_quiet pattern -- LINEAR gradient at any distance, so a
+       wrapped arm always feels a pull toward the carriage default.
+       Weight -0.5 over 8 joints is gentle next to waist_quiet's
+       -1.5 over 3: it must not fight reference tracking, only make
+       far-field drift cost something.
+    2. joint_pos_arms sigma 0.2 -> 0.5 per joint (x sqrt(8) carry):
+       stretches the exp basin so the gradient reaches ~2.5x further
+       before saturating (the closeout's own prescription: restore
+       gradient, widen sigma).
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        import math as _math
+        from isaaclab.managers import RewardTermCfg as _RewT
+        from isaaclab.managers import SceneEntityCfg as _Scene
+        import isaaclab.envs.mdp as _isaac_mdp
+
+        self.rewards.joint_pos_arms.params["sigma"] = 0.5 * _math.sqrt(8)
+        self.rewards.arms_home = _RewT(
+            func=_isaac_mdp.joint_deviation_l1, weight=-0.5,
+            params={"asset_cfg": _Scene(
+                "robot",
+                joint_names=[".*_SHOULDER_.*", ".*_ELBOW"])})
+
+
 class LpaWalkingCLFHistEnvCfg(LpaWalkingCLFEnvCfg):
     """FLAT walking with proprioceptive history — the play/export env
     for history policies.
