@@ -1024,51 +1024,6 @@ class LpaWalkingCLFRoughV2EnvCfg(LpaWalkingCLFRoughEnvCfg):
 
 @configclass
 
-class LpaWalkingCLFRoughV5EnvCfg(LpaWalkingCLFRoughV4EnvCfg):
-    """V4 + anti-reward-hacking package (user direction 2026-08-26).
-
-    Observed across rough21-23: arms parked behind the torso as
-    forward-lean ballast, lean riding the 15-deg deadband edge
-    (rough23 mean tilt 12.04), step length shrinking for stability.
-    One theme: make the honest gait the cheap strategy.
-
-    1. arms_vel_track (0.4): a parked arm pays the full reference
-       swing amplitude CONTINUOUSLY; a small phase lag pays
-       ~sin(lag/2) — phase tolerance with no phase-search machinery.
-    2. arms_deviation_cap (-3.0, theta_max 0.4 rad): in-band
-       deviation/lag FREE; the 0.5-1.0 rad parked offset is priced
-       quadratically.
-    3. arms_track_linear -0.5 -> -0.2: retrieval only; its flat tax
-       favored parking at the mean.
-    4. upright (+1.0, sigma 9 deg): duty-cycle bonus — brief lean
-       (recovery/acceleration) forfeits a few steps of bonus,
-       lean-as-strategy bleeds continuously. torso_pitch deadband
-       UNCHANGED at 15 deg (user: allow brief lean).
-    5. feet_air_time 2->3, xy_vel 1->2: stride levers; feet-position
-       group split deferred to v6 pending closeout stride numbers.
-    """
-
-    def __post_init__(self):
-        super().__post_init__()
-        import math as _math
-        from isaaclab.managers import RewardTermCfg as _RewT
-        from robot_rl.tasks.manager_based.robot_rl import mdp as _mdp
-
-        self.rewards.arms_vel_track = _RewT(
-            func=_mdp.joint_vel_group_reward, weight=0.4,
-            params={"command_name": "traj_ref",
-                    "sigma": 0.5 * _math.sqrt(8), "group": "arms"})
-        self.rewards.arms_deviation_cap = _RewT(
-            func=_mdp.joint_group_deviation_cap, weight=-3.0,
-            params={"command_name": "traj_ref", "group": "arms",
-                    "theta_max": 0.4})
-        self.rewards.arms_track_linear.weight = -0.2
-        self.rewards.upright = _RewT(
-            func=_mdp.upright_bonus, weight=1.0,
-            params={"sigma_deg": 9.0})
-        self.rewards.feet_air_time.weight = 3.0
-        self.rewards.xy_vel.weight = 2.0
-
 
 class LpaWalkingCLFRoughV4EnvCfg(LpaWalkingCLFRoughV2EnvCfg):
     """V2 + LINEAR arm retrieval toward the reference (supersedes the
@@ -1194,3 +1149,49 @@ class LpaWalkingCLFHistClear4EnvCfg(LpaWalkingCLFHistEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.commands.traj_ref.path = "lpa_lib/trajectories/walk_forward_clear4"
+
+
+class LpaWalkingCLFRoughV5EnvCfg(LpaWalkingCLFRoughV4EnvCfg):
+    """V4 + anti-reward-hacking package (user direction 2026-08-26).
+
+    Observed across rough21-23: arms parked behind the torso as
+    forward-lean ballast, lean riding the 15-deg deadband edge
+    (rough23 mean tilt 12.04), step length shrinking for stability.
+    One theme: make the honest gait the cheap strategy.
+
+    1. arms_vel_track (0.4): a parked arm pays the full reference
+       swing amplitude CONTINUOUSLY; a small phase lag pays
+       ~sin(lag/2) — phase tolerance with no phase-search machinery.
+    2. arms_deviation_cap (-3.0, theta_max 0.4 rad): in-band
+       deviation/lag FREE; the 0.5-1.0 rad parked offset is priced
+       quadratically.
+    3. arms_track_linear -0.5 -> -0.2: retrieval only; its flat tax
+       favored parking at the mean.
+    4. upright (+1.0, sigma 9 deg): duty-cycle bonus — brief lean
+       (recovery/acceleration) forfeits a few steps of bonus,
+       lean-as-strategy bleeds continuously. torso_pitch deadband
+       UNCHANGED at 15 deg (user: allow brief lean).
+    5. feet_air_time 2->3, xy_vel 1->2: stride levers; feet-position
+       group split deferred to v6 pending closeout stride numbers.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        import math as _math
+        from isaaclab.managers import RewardTermCfg as _RewT
+        from robot_rl.tasks.manager_based.robot_rl import mdp as _mdp
+
+        self.rewards.arms_vel_track = _RewT(
+            func=_mdp.joint_vel_group_reward, weight=0.4,
+            params={"command_name": "traj_ref",
+                    "sigma": 0.5 * _math.sqrt(8), "group": "arms"})
+        self.rewards.arms_deviation_cap = _RewT(
+            func=_mdp.joint_group_deviation_cap, weight=-3.0,
+            params={"command_name": "traj_ref", "group": "arms",
+                    "theta_max": 0.4})
+        self.rewards.arms_track_linear.weight = -0.2
+        self.rewards.upright = _RewT(
+            func=_mdp.upright_bonus, weight=1.0,
+            params={"sigma_deg": 9.0})
+        self.rewards.feet_air_time.weight = 3.0
+        self.rewards.xy_vel.weight = 2.0
