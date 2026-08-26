@@ -79,6 +79,59 @@ def joint_pos_reward(env: ManagerBasedRLEnv, command_name: str, sigma: float) ->
 
     return torch.exp(-KAPPA * v_joint_pos / sigma)
 
+def joint_vel_group_reward(env: ManagerBasedRLEnv, command_name: str,
+                           sigma: float, group: str) -> torch.Tensor:
+    """Velocity tracking for one limb group — the anti-parking term.
+
+    Position error cannot distinguish "swinging with a small lag"
+    from "parked at a clever offset"; VELOCITY error can. A parked
+    arm has ~zero joint velocity against an oscillating reference,
+    so it pays the full swing amplitude continuously, while a swing
+    lagging by dphi costs only ~sin(dphi/2) — small lags near-free
+    (the phase-tolerance requirement, with no phase-search
+    machinery). rough21-23 walks parked arms behind the torso as
+    lean ballast; this term makes that the expensive strategy."""
+    cmd_term = env.command_manager.get_term(command_name)
+    v = cmd_term.clf.v_subgroups[f"joint_vel_{group}"]
+    return torch.exp(-KAPPA * v / sigma)
+
+
+def joint_group_deviation_cap(env: ManagerBasedRLEnv, command_name: str,
+                              group: str, theta_max: float) -> torch.Tensor:
+    """Hinge on per-joint POSITION deviation beyond theta_max.
+
+    Inside the band deviation is free (slight off-reference motion
+    and phase lag are allowed by design); outside it grows
+    quadratically. Bounds the parked-arm offset (typically 0.5-1.0
+    rad) without taxing in-band swing. Use with NEGATIVE weight."""
+    cmd_term = env.command_manager.get_term(command_name)
+    idx = cmd_term.clf.subgroup_indices[f"joint_pos_{group}"]
+    eta_pos = cmd_term.clf.eta[:, idx]
+    excess = (eta_pos.abs() - theta_max).clamp(min=0.0)
+    return (excess * excess).sum(dim=-1)
+
+
+def upright_bonus(env: ManagerBasedRLEnv, sigma_deg: float,
+                  asset_cfg=None) -> torch.Tensor:
+    """Per-step bonus for being upright — duty-cycle uprightness.
+
+    Summed over an episode this rewards MOSTLY-upright strategies:
+    a brief lean (recovery, acceleration) forfeits a few steps of
+    bonus; sustained lean-as-strategy bleeds continuously. The
+    torso_pitch deadband stays wide so transients remain cheap —
+    this term shapes the preference, the deadband sets the limit."""
+    from isaaclab.assets import Articulation
+    from isaaclab.utils.math import quat_apply_inverse
+    import math
+    asset: Articulation = env.scene["robot"]
+    grav = quat_apply_inverse(asset.data.root_quat_w,
+                              asset.data.GRAVITY_VEC_W)
+    # tilt angle from vertical via the projected gravity xy magnitude
+    tilt = torch.asin(grav[:, :2].norm(dim=-1).clamp(max=1.0))
+    sigma = math.radians(sigma_deg)
+    return torch.exp(-(tilt / sigma) ** 2)
+
+
 def joint_pos_group_error_l2(env: ManagerBasedRLEnv, command_name: str,
                              group: str) -> torch.Tensor:
     """||eta_group|| — LINEAR tracking distance to the reference.

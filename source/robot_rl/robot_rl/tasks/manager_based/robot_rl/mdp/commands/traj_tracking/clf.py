@@ -239,6 +239,7 @@ class CLF:
         eta = torch.zeros(batch_size,self.n_outputs, device=y_act.device)
         eta[:,0::2] = y_err      # even indices: positions
         eta[:,1::2] = dy_err     # odd indices: velocities
+        self.eta = eta  # exposed for per-joint reward terms (v5)
 
         # Compute per-subgroup V contributions (self-contribution, excluding cross-terms)
         self.v_subgroups = {}
