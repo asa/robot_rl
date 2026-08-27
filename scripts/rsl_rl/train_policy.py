@@ -134,7 +134,10 @@ def main():
 
     # Set the task based on environment type
     args_cli.task = ENVIRONMENTS[args_cli.env_type]
-    args_cli.logger = "wandb"
+    # tensorboard only: wandb was hardcoded here and uploaded every
+    # run to a credit-less account (user directive 2026-08-26).
+    # launch_run additionally sets WANDB_MODE=disabled as a belt.
+    args_cli.logger = "tensorboard"
     args_cli.log_project_name = "g1_rl"
     
     # always enable cameras to record video
