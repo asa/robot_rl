@@ -38,6 +38,11 @@ _buf: dict = {}
 _step: int | None = None
 _last_flush = 0.0
 _failures = 0
+import re as _re
+_INCLUDE = _re.compile(os.environ.get(
+    "TRACKIO_METRICS_INCLUDE",
+    r"^(Episode_Reward|Episode_Termination|Train|Loss|"
+    r"Curriculum|Perf|Policy|Metrics/base_velocity)"))
 _MAX_FAILURES = 20
 
 
@@ -103,6 +108,11 @@ def log(data, step=None, **kw):
     # rsl_rl hands raw torch Tensors as scalar values; the storage
     # layer JSON-serializes. Coerce to float, drop what will not.
     for k, v in data.items():
+        # dashboard-worthy series only: the full tag set (~115
+        # per-joint traj_ref channels) renders hundreds of charts
+        # and kills the browser; deep traces live in tensorboard.
+        if not _INCLUDE.match(k):
+            continue
         try:
             _buf[k] = float(v)
         except (TypeError, ValueError):
