@@ -25,6 +25,7 @@ source of truth).
 
 from __future__ import annotations
 
+import datetime
 import os
 import time
 
@@ -83,7 +84,9 @@ def _flush():
     _fenced(lambda: SQLiteStorage.bulk_log(
         project=_project, run=_run_name,
         metrics_list=[payload], steps=[step],
-        timestamps=[str(time.time())]))
+        # ISO-8601 or the dashboard renders nothing (2026-08-27)
+        timestamps=[datetime.datetime.now(
+            datetime.timezone.utc).isoformat()]))
     _buf.clear()
     _last_flush = time.monotonic()
 
