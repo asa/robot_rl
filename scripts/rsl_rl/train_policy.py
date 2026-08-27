@@ -54,6 +54,7 @@ EXPERIMENT_NAMES = {
     "lpa_walking_clf_rough": "lpa_walking_clf",  # rough (shared exp dir)
     "lpa_walking_clf_rough_v5": "lpa_walking_clf",
     "lpa_walking_clf_rough_v6": "lpa_walking_clf",
+    "lpa_walking_clf_v6play": "lpa_walking_clf",
     "lpa_walking_clf_rough_v4": "lpa_walking_clf",
     "lpa_walking_clf_rough_v3": "lpa_walking_clf",
     "lpa_walking_clf_rough_v2": "lpa_walking_clf",  # rough v2 (shared exp dir)

@@ -1219,3 +1219,25 @@ class LpaWalkingCLFRoughV6EnvCfg(LpaWalkingCLFRoughV5EnvCfg):
 
         self.commands.traj_ref.arm_swing = ArmSwingOverlayCfg()
 
+
+@configclass
+class LpaWalkingCLFArmSwingPlayEnvCfg(LpaWalkingCLFEnvCfg_PLAY):
+    """Flat PLAY env matching the v6 training distribution.
+
+    The base flat play env serves the ORIGINAL walk reference (static
+    yaw-in arm carriage + stomp punch orbit). A v6-trained policy is
+    out-of-distribution against it: the CLF arm error grows over each
+    cycle until the policy fights it at the actuator limits — the
+    deterministic once-per-cycle right-arm slam + waist spin seen in
+    the rough26 flat renders (rollout_cmd058 curves, 2026-08-27).
+    Every flat render or rollout of an arm-swing policy must use THIS
+    env so the reference carries the same overlay it trained against.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from robot_rl.tasks.manager_based.robot_rl.mdp.commands.\
+            traj_tracking.trajectory_cmd_cfg import ArmSwingOverlayCfg
+
+        self.commands.traj_ref.arm_swing = ArmSwingOverlayCfg()
+
