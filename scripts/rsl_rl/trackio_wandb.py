@@ -55,7 +55,20 @@ def log(data, step=None, **kw):
     trackio.log(data, step=step)
 
 
+_finished = False
+
+
 def finish(**kw):
+    # Idempotent: rsl_rl never calls writer.stop(), so train_policy
+    # calls finish() explicitly after learn() — and trackio's own
+    # atexit may fire too on clean interpreters. Isaac's Kit teardown
+    # exits via os._exit, which skips atexit entirely: without the
+    # explicit call the entire metric series is dropped (smoke
+    # 2026-08-27: 10 iterations, 0 rows).
+    global _finished
+    if _finished:
+        return
+    _finished = True
     trackio.finish()
 
 

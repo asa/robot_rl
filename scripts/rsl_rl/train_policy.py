@@ -474,6 +474,12 @@ def main():
         # Run training
         runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
 
+        # Flush the tracker BEFORE Isaac teardown: rsl_rl never calls
+        # writer.stop(), trackio buffers until finish, and Kit's
+        # exit path (os._exit) skips atexit — the metric series only
+        # persists because of this call.
+        sys.modules["wandb"].finish()
+
         # Cleanup
         env.close()
 
