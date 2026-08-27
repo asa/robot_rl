@@ -69,8 +69,11 @@ def _fenced(fn):
 
 
 def init(project=None, entity=None, name=None, **kw):
+    # rsl_rl passes its log-dir name (<timestamp>_<run_id>); the
+    # dashboard should show the run id — launch_run exports it
+    # (user 2026-08-27: date + zero-padded name, no timestamp).
     global run, _run_name
-    _run_name = name or "unnamed"
+    _run_name = os.environ.get("TRACKIO_RUN_NAME") or name or "unnamed"
     run = _Run(_run_name)
     return run
 
