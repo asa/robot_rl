@@ -18,6 +18,7 @@ ENVIRONMENTS = {
     "lpa_walking_clf_rough_v5": "LPA-walking-clf-rough-honest-gait",
     "lpa_walking_clf_rough_v6": "LPA-walking-clf-rough-arm-swing",
     "lpa_walking_clf_v6play": "LPA-walking-clf-arm-swing-play",
+    "lpa_walking_clf_rough_v7": "LPA-walking-clf-rough-contact-priced",
     "lpa_walking_clf_rough_v4": "LPA-walking-clf-rough-retrieve2",
     "lpa_walking_clf_rough_v3": "LPA-walking-clf-rough-retrieve",
     "lpa_walking_clf_rough_v2": "LPA-walking-clf-rough-priced",  # + fall pricing
@@ -56,6 +57,7 @@ EXPERIMENT_NAMES = {
     "lpa_walking_clf_rough_v5": "lpa_walking_clf",
     "lpa_walking_clf_rough_v6": "lpa_walking_clf",
     "lpa_walking_clf_v6play": "lpa_walking_clf",
+    "lpa_walking_clf_rough_v7": "lpa_walking_clf",
     "lpa_walking_clf_rough_v4": "lpa_walking_clf",
     "lpa_walking_clf_rough_v3": "lpa_walking_clf",
     "lpa_walking_clf_rough_v2": "lpa_walking_clf",  # rough v2 (shared exp dir)

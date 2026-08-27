@@ -111,6 +111,43 @@ def joint_group_deviation_cap(env: ManagerBasedRLEnv, command_name: str,
     return (excess * excess).sum(dim=-1)
 
 
+def joint_group_deviation_cap_asym(
+        env: ManagerBasedRLEnv, command_name: str, group: str,
+        theta_max: float, bands: dict) -> torch.Tensor:
+    """Per-DIRECTION hinge on per-joint position deviation.
+
+    v6's symmetric 0.4 rad band let the policy wander to yaw -0.95
+    (deeper in than the removed carriage), press roll into the torso
+    and park the elbow folded at eta -1.7 — all unpriced until the
+    self-collision impact toppled the robot (rough26 rollout curves,
+    2026-08-27). bands maps joint name -> (lo, hi) bounds on
+    eta = act - ref; unlisted joints keep +-theta_max. Outward
+    freedom stays; inward (toward the body) is tight, from the
+    collision-bank clearance table. Use with NEGATIVE weight."""
+    cmd_term = env.command_manager.get_term(command_name)
+    idx = cmd_term.clf.subgroup_indices[f"joint_pos_{group}"]
+    key = f"_asym_bands_{group}"
+    if not hasattr(cmd_term, key):
+        names = [cmd_term.ordered_vel_output_names[int(i)]
+                 .removeprefix("joint:") for i in idx]
+        unknown = set(bands) - set(names)
+        if unknown:
+            raise ValueError(
+                f"asym bands name joints not in group {group}: "
+                f"{sorted(unknown)} (group has {names})")
+        device = cmd_term.clf.eta.device
+        lo = torch.full((len(names),), -theta_max, device=device)
+        hi = torch.full((len(names),), theta_max, device=device)
+        for j, n in enumerate(names):
+            if n in bands:
+                lo[j], hi[j] = bands[n]
+        setattr(cmd_term, key, (lo, hi))
+    lo, hi = getattr(cmd_term, key)
+    eta_pos = cmd_term.clf.eta[:, idx]
+    excess = (eta_pos - hi).clamp(min=0.0) + (lo - eta_pos).clamp(min=0.0)
+    return (excess * excess).sum(dim=-1)
+
+
 def upright_bonus(env: ManagerBasedRLEnv, sigma_deg: float,
                   asset_cfg=None) -> torch.Tensor:
     """Per-step bonus for being upright — duty-cycle uprightness.

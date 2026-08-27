@@ -1241,3 +1241,51 @@ class LpaWalkingCLFArmSwingPlayEnvCfg(LpaWalkingCLFEnvCfg_PLAY):
 
         self.commands.traj_ref.arm_swing = ArmSwingOverlayCfg()
 
+
+@configclass
+class LpaWalkingCLFRoughV7EnvCfg(LpaWalkingCLFRoughV6EnvCfg):
+    """V6 + contact pricing + asymmetric bands (rough26 diagnosis).
+
+    The in-distribution rough26 curves showed a once-per-cycle arm
+    whip at the actuator limits: elbow parked folded (eta -1.7,
+    fists high — NOT collision avoidance, the bank refutes that),
+    snapping at the reference's punch flourish, waist counter-
+    rotating, contact forces shoving the torso. Three prices v6
+    never charged:
+
+    1. arm_contact: forearm/hand contact force is the punch
+       MECHANISM — price it directly (sensor already covers every
+       body; self-collisions are physically on).
+    2. asymmetric bands: outward freedom kept at 0.4; inward
+       (yaw/roll toward the body) tight at 0.1 past the reference;
+       elbow band +-0.3 so the fold is priced from the first rad.
+    3. arms_track_linear back to -0.5: constant retrieval pressure
+       against the fossilized pendulum9b-lineage arm habit.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import RewardTermCfg as _RewT
+        from isaaclab.managers import SceneEntityCfg as _SceneCfg
+        from robot_rl.tasks.manager_based.robot_rl import mdp as _mdp
+
+        self.rewards.arms_deviation_cap = _RewT(
+            func=_mdp.joint_group_deviation_cap_asym, weight=-3.0,
+            params={"command_name": "traj_ref", "group": "arms",
+                    "theta_max": 0.4,
+                    "bands": {
+                        "L_SHOULDER_YAW": (-0.10, 0.40),
+                        "R_SHOULDER_YAW": (-0.40, 0.10),
+                        "L_SHOULDER_ROLL": (-0.10, 0.40),
+                        "R_SHOULDER_ROLL": (-0.40, 0.10),
+                        "L_ELBOW": (-0.30, 0.30),
+                        "R_ELBOW": (-0.30, 0.30),
+                    }})
+        self.rewards.arm_contact = _RewT(
+            func=_mdp.undesired_contacts, weight=-2.0,
+            params={"sensor_cfg": _SceneCfg(
+                        "contact_forces",
+                        body_names=[".*_ELBOW", ".*_WRIST"]),
+                    "threshold": 1.0})
+        self.rewards.arms_track_linear.weight = -0.5
+
