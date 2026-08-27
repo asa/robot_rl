@@ -103,3 +103,10 @@ hf/
 
 claude_plans/
 uv.lock
+# Input mirrors synced from tinh's data tree — live inputs for
+# play/train from the repo root, not sources (provenance:
+# /opt/tinh/data/trajopt/clfrl_lib and the Isaac asset exports).
+/lpa_lib/
+/robot_assets/
+# run pidfiles
+*.pid
