@@ -94,7 +94,13 @@ def log(data, step=None, **kw):
         _flush()
     if step is not None:
         _step = int(step)
-    _buf.update(data)
+    # rsl_rl hands raw torch Tensors as scalar values; the storage
+    # layer JSON-serializes. Coerce to float, drop what will not.
+    for k, v in data.items():
+        try:
+            _buf[k] = float(v)
+        except (TypeError, ValueError):
+            pass
     if time.monotonic() - _last_flush > 60:
         _flush()
 
