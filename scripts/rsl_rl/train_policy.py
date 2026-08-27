@@ -143,7 +143,14 @@ def main():
     # tensorboard only: wandb was hardcoded here and uploaded every
     # run to a credit-less account (user directive 2026-08-26).
     # launch_run additionally sets WANDB_MODE=disabled as a belt.
-    args_cli.logger = "tensorboard"
+    args_cli.logger = "wandb"
+    # trackio behind the wandb surface: rsl_rl's writer imports
+    # "wandb" and must get the adapter (local-first, TRACKIO_DIR
+    # inside the run dataset) — never the real wandb client. The
+    # hard import means a broken env fails here, not by silently
+    # falling back to network telemetry.
+    import trackio_wandb
+    sys.modules["wandb"] = trackio_wandb
     args_cli.log_project_name = "g1_rl"
     
     # always enable cameras to record video
