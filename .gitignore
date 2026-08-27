@@ -103,9 +103,11 @@ hf/
 
 claude_plans/
 uv.lock
-# Input mirrors synced from tinh's data tree — live inputs for
-# play/train from the repo root, not sources (provenance:
-# /opt/tinh/data/trajopt/clfrl_lib and the Isaac asset exports).
+# Assets do NOT live in this repo (user, 2026-08-27): deployed
+# runs read the BUNDLED copies in the run dir (sourced from
+# @tinh_data//lpa/...); repo-root copies were pre-run-system
+# vestiges, deleted with stale content. These ignores are a guard
+# so they cannot silently reappear.
 /lpa_lib/
 /robot_assets/
 # run pidfiles
