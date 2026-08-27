@@ -1294,3 +1294,32 @@ class LpaWalkingCLFRoughV7EnvCfg(LpaWalkingCLFRoughV6EnvCfg):
                     "threshold": 1.0})
         self.rewards.arms_track_linear.weight = -0.5
 
+
+@configclass
+class LpaWalkingCLFRoughV8EnvCfg(LpaWalkingCLFRoughV7EnvCfg):
+    """V7 + elbow tuck (user direction 2026-08-27).
+
+    rough27 halved the whip but the arms still flare: shoulder roll
+    rides outward (0.5 rad observed) with the elbow folded, dropping
+    the fist inboard over the hip (FK: fold pulls hand y from 0.35 m
+    to 0.16 m — hip height and hip line). The outward roll direction
+    was left cheap in v7 (0.40 free + weak quadratic = 0.04/step at
+    the observed flare). Tuck = tighten outward roll to 0.15 and
+    double the cap weight so both the flare and the fossilized elbow
+    fold pay real rent. ROM audit (2026-08-27): limits correctly
+    mirrored, FK mirror-consistent to 3.5 mm — ROM allows 120 deg
+    abduction by design, so the tuck must come from pricing.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.arms_deviation_cap.weight = -6.0
+        self.rewards.arms_deviation_cap.params["bands"] = {
+            "L_SHOULDER_YAW": (-0.10, 0.40),
+            "R_SHOULDER_YAW": (-0.40, 0.10),
+            "L_SHOULDER_ROLL": (-0.10, 0.15),
+            "R_SHOULDER_ROLL": (-0.15, 0.10),
+            "L_ELBOW": (-0.30, 0.30),
+            "R_ELBOW": (-0.30, 0.30),
+        }
+
