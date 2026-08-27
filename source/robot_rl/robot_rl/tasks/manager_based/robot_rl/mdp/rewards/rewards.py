@@ -128,7 +128,10 @@ def joint_group_deviation_cap_asym(
     idx = cmd_term.clf.subgroup_indices[f"joint_pos_{group}"]
     key = f"_asym_bands_{group}"
     if not hasattr(cmd_term, key):
-        names = [cmd_term.ordered_vel_output_names[int(i)]
+        # subgroup indices address the INTERLEAVED eta
+        # (pos = 2*i, vel = 2*i + 1); the tangent-channel name
+        # index is i // 2 (first launch died on the raw index).
+        names = [cmd_term.ordered_vel_output_names[int(i) // 2]
                  .removeprefix("joint:") for i in idx]
         unknown = set(bands) - set(names)
         if unknown:
