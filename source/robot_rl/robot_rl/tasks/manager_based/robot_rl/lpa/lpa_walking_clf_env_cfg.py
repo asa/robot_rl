@@ -1285,7 +1285,12 @@ class LpaWalkingCLFRoughV7EnvCfg(LpaWalkingCLFRoughV6EnvCfg):
             func=_mdp.undesired_contacts, weight=-2.0,
             params={"sensor_cfg": _SceneCfg(
                         "contact_forces",
-                        body_names=[".*_ELBOW", ".*_WRIST"]),
+                        # WRIST links hang on fixed joints and
+                        # merge into the ELBOW bodies in PhysX —
+                        # .*_WRIST matches nothing in the sensor
+                        # (rough27 first launch died resolving it).
+                        # The ELBOW body IS forearm+hand.
+                        body_names=[".*_ELBOW"]),
                     "threshold": 1.0})
         self.rewards.arms_track_linear.weight = -0.5
 
