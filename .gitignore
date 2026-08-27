@@ -109,6 +109,6 @@ uv.lock
 # vestiges, deleted with stale content. These ignores are a guard
 # so they cannot silently reappear.
 /lpa_lib/
-/robot_assets/
+/robot_assets/lpa/
 # run pidfiles
 *.pid
