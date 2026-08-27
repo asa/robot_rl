@@ -7,6 +7,44 @@ from .trajectory_cmd import TrajectoryCommand
 
 
 @configclass
+class ArmSwingOverlayCfg:
+    """Phase-locked elliptical arm swing overlaid on the tracked
+    reference (v6 honest-gait, user direction 2026-08-26).
+
+    The stand carriage holds shoulder yaw rotated IN (-0.70 rad) with
+    the elbow flexed; the symforce collision bank measures 0.9 mm of
+    forearm-hip clearance over any pitch swing from that pose -- the
+    reference parks the arms where swinging is mechanically
+    impossible, which is why rough21-24 never swung regardless of
+    reward shaping. The style target (fists in at the swing extremes,
+    out when passing the hips) is an ellipse in (pitch, yaw): at the
+    pitch extremes the forearm is displaced fore/aft so yaw-in is
+    safe; at hip passage yaw must open out. Bank clearance at the
+    defaults below: 57-92 mm over the full cycle.
+
+    Pitch is ADDED to the reference (L +amp*sin, R mirrored); yaw
+    REPLACES it (the carriage value is the hazard being removed).
+    Values are L-side signed; R is negated. Applies to locomotion
+    envs only -- explicit behavior references keep their solved arms.
+    """
+
+    pitch_amp: float = 0.40
+    yaw_in: float = -0.55
+    yaw_out: float = -0.10
+    # radians added to 2*pi*phi, aligning the arm cycle to the leg
+    # cycle. Derived for the pendulum-stomp walk_forward library
+    # (cycle 1.531 s): R heel strike at phi 0.794, and NEGATIVE
+    # shoulder pitch is hand-forward (FK probe, tinh
+    # modules/collision survey 2026-08-26), so L max-forward
+    # (sin = -1) lands there: 3*pi/2 - 2*pi*0.794 = -0.277.
+    # Cross-check: L heel strike (phi 0.294) -> theta = pi/2 -> L
+    # max-back. Contralateral both ways.
+    phase_offset: float = -0.277
+    pitch_joints: tuple = ("L_SHOULDER_PITCH", "R_SHOULDER_PITCH")
+    yaw_joints: tuple = ("L_SHOULDER_YAW", "R_SHOULDER_YAW")
+
+
+@configclass
 class TrajectoryCommandCfg(CommandTermCfg):
     """
     Configuration for trajectory commands.
@@ -75,3 +113,5 @@ class TrajectoryCommandCfg(CommandTermCfg):
     # keep their original heading-relative behavior. Turn work is
     # parked (2026-08-17); re-enable per-env when it resumes.
     anchored_yaw: bool = False
+    # v6 arm-swing overlay; None = reference arms unchanged.
+    arm_swing: ArmSwingOverlayCfg | None = None

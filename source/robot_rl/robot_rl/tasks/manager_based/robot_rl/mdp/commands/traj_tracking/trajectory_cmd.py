@@ -107,6 +107,17 @@ class TrajectoryCommand(CommandTerm):
             else:
                 raise ValueError(f"Velocity output name '{vel_name}' not found in position output names.")
 
+        # Arm-swing overlay (v6): resolve the four arm channels
+        # once; .index raises if an output is missing (fail fast).
+        self._arm_swing = getattr(cfg, "arm_swing", None)
+        if self._arm_swing is not None:
+            def _pv(joint):
+                name = f"joint:{joint}"
+                return (self.ordered_pos_output_names.index(name),
+                        self.ordered_vel_output_names.index(name))
+            self._asw_pitch_idx = [_pv(j) for j in self._arm_swing.pitch_joints]
+            self._asw_yaw_idx = [_pv(j) for j in self._arm_swing.yaw_joints]
+
         # Create a list of indices for the reference frames
         self.ref_frame_indices, self.ref_frames = self._parse_ref_frames(self.manager.get_reference_frames())
 
@@ -923,6 +934,9 @@ class TrajectoryCommand(CommandTerm):
                                                y_pos, y_vel, self.contact_bodies,
                                                contact_states, phi_for_heuristic, total_time, env_ids, self.cfg.hold_phi_threshold)
 
+        if self._arm_swing is not None:
+            y_pos, y_vel = self._apply_arm_swing(y_pos, y_vel, phi, env_ids)
+
         # Update state - use slice if env_ids provided
         if env_ids is None:
             self.y_des = y_pos
@@ -942,6 +956,49 @@ class TrajectoryCommand(CommandTerm):
         else:
             sat = epi_env[env_ids] & (phi >= 1.0 - 1e-6)
             self.dy_des[env_ids[sat]] *= 0
+
+    def _apply_arm_swing(self, y_pos, y_vel, phi, env_ids):
+        """Overlay the phase-locked elliptical arm swing (see
+        ArmSwingOverlayCfg). Shoulder pitch swings +-pitch_amp about
+        the reference (L/R antiphase); shoulder yaw rides the coupled
+        ellipse -- yaw_in at the pitch extremes, yaw_out at hip
+        passage -- REPLACING the carriage yaw. Locomotion envs only;
+        held envs (phi locked at 0/0.5) rest at zero overlay velocity
+        with yaw near yaw_out, which the bank shows is the clear
+        hanging pose."""
+        asw = self._arm_swing
+        if env_ids is None:
+            active = self.active_ref_id < 0
+            holding = self.hold_phi_value >= 0
+            rate = (self.contact_phase_rate if self.cfg.contact_gate
+                    else torch.ones_like(phi))
+        else:
+            active = self.active_ref_id[env_ids] < 0
+            holding = self.hold_phi_value[env_ids] >= 0
+            rate = (self.contact_phase_rate[env_ids]
+                    if self.cfg.contact_gate else torch.ones_like(phi))
+
+        theta = 2 * torch.pi * phi + asw.phase_offset
+        s, c = torch.sin(theta), torch.cos(theta)
+        theta_dot = 2 * torch.pi * rate / self.manager.get_total_time()
+        theta_dot = torch.where(holding, torch.zeros_like(theta_dot),
+                                theta_dot)
+
+        gain = active.float()
+        for side, (pi_, vi) in enumerate(self._asw_pitch_idx):
+            sign = 1.0 if side == 0 else -1.0
+            y_pos[:, pi_] = y_pos[:, pi_] + gain * sign * asw.pitch_amp * s
+            y_vel[:, vi] = (y_vel[:, vi]
+                            + gain * sign * asw.pitch_amp * c * theta_dot)
+        yaw_mag = asw.yaw_out + (asw.yaw_in - asw.yaw_out) * s * s
+        yaw_vel = (asw.yaw_in - asw.yaw_out) * 2 * s * c * theta_dot
+        for side, (pi_, vi) in enumerate(self._asw_yaw_idx):
+            sign = 1.0 if side == 0 else -1.0
+            y_pos[:, pi_] = torch.where(active, sign * yaw_mag,
+                                        y_pos[:, pi_])
+            y_vel[:, vi] = torch.where(active, sign * yaw_vel,
+                                       y_vel[:, vi])
+        return y_pos, y_vel
 
     def set_user_heuristic(self, heuristic_func):
         """

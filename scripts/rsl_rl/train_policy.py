@@ -16,6 +16,7 @@ ENVIRONMENTS = {
     "lpa_walking_clf_ramp": "LPA-walking-clf-ramp",  # tinh-lpa-ramp.5
     "lpa_walking_clf_rough": "LPA-walking-clf-rough",  # terrain robustness
     "lpa_walking_clf_rough_v5": "LPA-walking-clf-rough-honest-gait",
+    "lpa_walking_clf_rough_v6": "LPA-walking-clf-rough-arm-swing",
     "lpa_walking_clf_rough_v4": "LPA-walking-clf-rough-retrieve2",
     "lpa_walking_clf_rough_v3": "LPA-walking-clf-rough-retrieve",
     "lpa_walking_clf_rough_v2": "LPA-walking-clf-rough-priced",  # + fall pricing
@@ -52,6 +53,7 @@ EXPERIMENT_NAMES = {
     "lpa_walking_clf_ramp": "lpa_walking_clf",  # tinh-lpa-ramp.5 (shared exp dir)
     "lpa_walking_clf_rough": "lpa_walking_clf",  # rough (shared exp dir)
     "lpa_walking_clf_rough_v5": "lpa_walking_clf",
+    "lpa_walking_clf_rough_v6": "lpa_walking_clf",
     "lpa_walking_clf_rough_v4": "lpa_walking_clf",
     "lpa_walking_clf_rough_v3": "lpa_walking_clf",
     "lpa_walking_clf_rough_v2": "lpa_walking_clf",  # rough v2 (shared exp dir)

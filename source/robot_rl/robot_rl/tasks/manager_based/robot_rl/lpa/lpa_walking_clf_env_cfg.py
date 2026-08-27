@@ -1195,3 +1195,27 @@ class LpaWalkingCLFRoughV5EnvCfg(LpaWalkingCLFRoughV4EnvCfg):
             params={"sigma_deg": 9.0})
         self.rewards.feet_air_time.weight = 3.0
         self.rewards.xy_vel.weight = 2.0
+
+
+@configclass
+class LpaWalkingCLFRoughV6EnvCfg(LpaWalkingCLFRoughV5EnvCfg):
+    """V5 + the arm-swing overlay (user direction 2026-08-26).
+
+    rough24 proved v5 killed the lean strategy (mean tilt 3.59 deg)
+    but the arms still never swung: the collision bank showed the
+    carriage yaw (-0.70) leaves 0.9 mm of forearm-hip clearance over
+    any pitch swing -- the reference itself made swinging impossible.
+    v6 keeps every v5 reward and moves the TARGET: the overlay swings
+    the arm reference on the ellipse the user styled (fists in at the
+    extremes, out at hip passage), so arms_vel_track / the deviation
+    cap / arms_track_linear all aim at a swinging, collision-free
+    reference instead of a parked, colliding one.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from robot_rl.tasks.manager_based.robot_rl.mdp.commands.\
+            traj_tracking.trajectory_cmd_cfg import ArmSwingOverlayCfg
+
+        self.commands.traj_ref.arm_swing = ArmSwingOverlayCfg()
+
