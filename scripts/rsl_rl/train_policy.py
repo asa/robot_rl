@@ -143,14 +143,16 @@ def main():
     # tensorboard only: wandb was hardcoded here and uploaded every
     # run to a credit-less account (user directive 2026-08-26).
     # launch_run additionally sets WANDB_MODE=disabled as a belt.
-    args_cli.logger = "wandb"
-    # trackio behind the wandb surface: rsl_rl's writer imports
-    # "wandb" and must get the adapter (local-first, TRACKIO_DIR
-    # inside the run dataset) — never the real wandb client. The
-    # hard import means a broken env fails here, not by silently
-    # falling back to network telemetry.
-    import trackio_wandb
-    sys.modules["wandb"] = trackio_wandb
+    args_cli.logger = "tensorboard"
+    # NOT wandb (credit-less account, no external telemetry) and NOT
+    # in-process trackio either: the smoke matrix (2026-08-27)
+    # showed trackio's writer thread does not survive inside Kit —
+    # init runs, log() is called with real data, finish() runs, and
+    # zero metric rows persist (only its direct-write system-metrics
+    # thread lands). The identical sequence outside Kit persists
+    # fine, even through os._exit. Tracking is therefore INGESTED:
+    # closeout imports the tfevents into the shared trackio store
+    # (trackio.import_tf_events) where the dashboard reads all runs.
     args_cli.log_project_name = "g1_rl"
     
     # always enable cameras to record video
@@ -473,12 +475,6 @@ def main():
 
         # Run training
         runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
-
-        # Flush the tracker BEFORE Isaac teardown: rsl_rl never calls
-        # writer.stop(), trackio buffers until finish, and Kit's
-        # exit path (os._exit) skips atexit — the metric series only
-        # persists because of this call.
-        sys.modules["wandb"].finish()
 
         # Cleanup
         env.close()
