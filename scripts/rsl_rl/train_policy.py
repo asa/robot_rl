@@ -143,16 +143,15 @@ def main():
     # tensorboard only: wandb was hardcoded here and uploaded every
     # run to a credit-less account (user directive 2026-08-26).
     # launch_run additionally sets WANDB_MODE=disabled as a belt.
-    args_cli.logger = "tensorboard"
-    # NOT wandb (credit-less account, no external telemetry) and NOT
-    # in-process trackio either: the smoke matrix (2026-08-27)
-    # showed trackio's writer thread does not survive inside Kit —
-    # init runs, log() is called with real data, finish() runs, and
-    # zero metric rows persist (only its direct-write system-metrics
-    # thread lands). The identical sequence outside Kit persists
-    # fine, even through os._exit. Tracking is therefore INGESTED:
-    # closeout imports the tfevents into the shared trackio store
-    # (trackio.import_tf_events) where the dashboard reads all runs.
+    args_cli.logger = "wandb"
+    # LIVE metrics via the direct-storage trackio shim (see
+    # trackio_wandb.py for why trackio's own client dies under Kit
+    # and why direct SQLiteStorage writes do not). The wandb name is
+    # only the surface rsl_rl's vendored writer expects — nothing
+    # touches the network. Closeout's tfevents ingestion replaces
+    # the live series with the canonical one afterwards.
+    import trackio_wandb
+    sys.modules["wandb"] = trackio_wandb
     args_cli.log_project_name = "g1_rl"
     
     # always enable cameras to record video

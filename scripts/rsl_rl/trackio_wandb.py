@@ -1,38 +1,48 @@
-"""wandb-shaped adapter over trackio (Hugging Face).
+"""wandb-shaped LIVE metrics writer over trackio's storage layer.
 
-rsl_rl's WandbSummaryWriter is vendored — it stays byte-for-byte and
-keeps calling the wandb module surface. train_policy installs THIS
-module as sys.modules["wandb"] before the runner constructs, so the
-writer's five calls (init / config.update / log / finish / save)
-land on trackio instead: local-first metrics (sqlite under
-TRACKIO_DIR, set by launch_run to <run_dir>/work/trackio so the
-series lives inside the run dataset and its @closeout snapshot),
-no external telemetry, dashboard via `trackio show`.
+Installed as sys.modules["wandb"] so rsl_rl's vendored
+WandbSummaryWriter logs here. Trackio's OWN client (init/log/finish)
+is a queue-and-server design that cannot survive Isaac Kit: the
+smoke matrix (2026-08-27) showed init/log/finish all execute with
+real data and zero metric rows persist — the writer thread dies
+with Kit's event loop and Kit exits via os._exit, skipping atexit.
+The proof that DIRECT writes work came from the same smoke: trackio's
+system-metrics thread (a direct sqlite path) landed its rows fine.
 
-Deliberately minimal: anything rsl_rl does not call is absent, so a
-future rsl_rl bump that widens its wandb usage fails loudly here
-instead of silently uploading somewhere.
+So this shim writes through trackio.sqlite_storage.SQLiteStorage
+synchronously — one merged row per training iteration, flushed when
+the global step advances — into the SHARED store (TRACKIO_DIR =
+/opt/tinh/data/lpa/trackio), which the dashboard service reads
+live. The closeout's tfevents ingestion then REPLACES the run with
+the canonical tensorboard series (idempotent), reconciling anything
+a crash dropped.
+
+Telemetry must never sink a training run: every storage call is
+fenced; after repeated failures the shim disarms loudly and
+training continues without live metrics (tensorboard remains the
+source of truth).
 """
 
 from __future__ import annotations
 
-import trackio
+import os
+import time
+
+from trackio.sqlite_storage import SQLiteStorage
 
 run = None
+_project = os.environ.get("TRACKIO_PROJECT", "lpa")
+_run_name = None
+_buf: dict = {}
+_step: int | None = None
+_last_flush = 0.0
+_failures = 0
+_MAX_FAILURES = 20
 
 
 class _Config:
-    """wandb.config lookalike. Values are recorded at init time via
-    trackio's config= when possible; later .update() calls are
-    forwarded as config metadata if trackio's run supports it and
-    dropped otherwise — the run.yaml spec is the durable config
-    record, not the tracker."""
-
     def update(self, d, **kw):
-        r = trackio.run if hasattr(trackio, "run") else None
-        cfg = getattr(r, "config", None)
-        if cfg is not None and hasattr(cfg, "update"):
-            cfg.update(d)
+        pass
 
 
 config = _Config()
@@ -43,35 +53,55 @@ class _Run:
         self.name = name
 
 
+def _fenced(fn):
+    global _failures
+    if _failures >= _MAX_FAILURES:
+        return
+    try:
+        fn()
+    except Exception as e:
+        _failures += 1
+        if _failures in (1, _MAX_FAILURES):
+            print(f"[trackio-live] storage write failed ({e}); "
+                  f"{'DISARMED — tensorboard remains authoritative' if _failures >= _MAX_FAILURES else 'will keep trying'}",
+                  flush=True)
+
+
 def init(project=None, entity=None, name=None, **kw):
-    # entity is a wandb-ism; trackio has no accounts
-    global run
-    trackio.init(project=project or "robot_rl", name=name)
-    run = _Run(name)
+    global run, _run_name
+    _run_name = name or "unnamed"
+    run = _Run(_run_name)
     return run
 
 
+def _flush():
+    global _buf, _last_flush
+    if not _buf or _run_name is None:
+        return
+    payload = dict(_buf)
+    step = int(_step or 0)
+    _fenced(lambda: SQLiteStorage.bulk_log(
+        project=_project, run=_run_name,
+        metrics_list=[payload], steps=[step],
+        timestamps=[str(time.time())]))
+    _buf.clear()
+    _last_flush = time.monotonic()
+
+
 def log(data, step=None, **kw):
-    trackio.log(data, step=step)
-
-
-_finished = False
+    global _step
+    if step is not None and _step is not None and step != _step:
+        _flush()
+    if step is not None:
+        _step = int(step)
+    _buf.update(data)
+    if time.monotonic() - _last_flush > 60:
+        _flush()
 
 
 def finish(**kw):
-    # Idempotent: rsl_rl never calls writer.stop(), so train_policy
-    # calls finish() explicitly after learn() — and trackio's own
-    # atexit may fire too on clean interpreters. Isaac's Kit teardown
-    # exits via os._exit, which skips atexit entirely: without the
-    # explicit call the entire metric series is dropped (smoke
-    # 2026-08-27: 10 iterations, 0 rows).
-    global _finished
-    if _finished:
-        return
-    _finished = True
-    trackio.finish()
+    _flush()
 
 
 def save(path, base_path=None, **kw):
-    # checkpoints already live in the run dataset; nothing to upload
     pass
