@@ -1323,3 +1323,30 @@ class LpaWalkingCLFRoughV8EnvCfg(LpaWalkingCLFRoughV7EnvCfg):
             "R_ELBOW": (-0.30, 0.30),
         }
 
+
+@configclass
+class LpaWalkingCLFRoughV9EnvCfg(LpaWalkingCLFRoughV8EnvCfg):
+    """V8 + absolute elbow-depth band (user: "continue fixing the
+    elbows", 2026-08-28).
+
+    rough28 fixed roll (tucked), waist (quiet) and the whip (gone),
+    and turned the parked elbow fold into a gait-locked pump — but
+    the pump troughs at the -2.2 joint STOP, ~1 rad past the
+    reference band, and the ref-relative cap plateaued at that
+    equilibrium. The trough is a fixed angle, so the rule becomes
+    absolute: pump to -1.2 and no deeper (reference max depth is
+    -0.69; the extra 0.5 rad is transition room), never past
+    +0.1 toward hyperextension. Same lever class that broke the
+    roll flare, aimed where the residual lives.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import RewardTermCfg as _RewT
+        from robot_rl.tasks.manager_based.robot_rl import mdp as _mdp
+
+        self.rewards.elbow_depth = _RewT(
+            func=_mdp.joint_abs_band, weight=-8.0,
+            params={"joint_names": ["L_ELBOW", "R_ELBOW"],
+                    "lo": -1.20, "hi": 0.10})
+

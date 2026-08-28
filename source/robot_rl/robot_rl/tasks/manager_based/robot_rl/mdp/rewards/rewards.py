@@ -111,6 +111,30 @@ def joint_group_deviation_cap(env: ManagerBasedRLEnv, command_name: str,
     return (excess * excess).sum(dim=-1)
 
 
+def joint_abs_band(env: ManagerBasedRLEnv, joint_names: list,
+                   lo: float, hi: float, asset_cfg=None) -> torch.Tensor:
+    """Quadratic hinge on ABSOLUTE joint angle outside [lo, hi].
+
+    Ref-relative bands could not break the elbow riding its -2.2
+    stop (rough28: the fold now cycles with the gait but troughs at
+    the stop, ~1 rad past the reference). The trough lives at a
+    fixed ANGLE, not a fixed deviation — an absolute band names the
+    style rule directly: the walking elbow pumps to lo and no
+    deeper, whatever the reference is doing. Use with NEGATIVE
+    weight."""
+    from isaaclab.assets import Articulation
+    asset: Articulation = env.scene["robot"]
+    key = "_abs_band_idx_" + "_".join(joint_names)
+    if not hasattr(env, key):
+        ids, _ = asset.find_joints(joint_names, preserve_order=True)
+        setattr(env, key, torch.tensor(ids, dtype=torch.long,
+                                       device=env.device))
+    idx = getattr(env, key)
+    q = asset.data.joint_pos[:, idx]
+    excess = (q - hi).clamp(min=0.0) + (lo - q).clamp(min=0.0)
+    return (excess * excess).sum(dim=-1)
+
+
 def joint_group_deviation_cap_asym(
         env: ManagerBasedRLEnv, command_name: str, group: str,
         theta_max: float, bands: dict) -> torch.Tensor:
