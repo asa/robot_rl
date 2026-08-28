@@ -1430,4 +1430,15 @@ class LpaWalkingCLFGraph1EnvCfg(LpaWalkingCLFGraphTurnEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.commands.traj_ref.path = "lpa_lib/trajectories/graph1"
+        # The four command fractions are validated as
+        # open + closed + closed_yaw + standing == 1.0, by EXACT float
+        # equality (velocity_commands.py). Raising standing to 0.25
+        # without rebalancing left them at 1.20 and Isaac raised
+        # "Relative envs ... don't sum to 1!" two minutes into boot,
+        # after the 10.7GB env had already been cloned and staged.
+        # These four sum to exactly 1.0 in float arithmetic; not every
+        # set of round decimals does, so re-check when changing them.
         self.commands.base_velocity.rel_standing_envs = 0.25
+        self.commands.base_velocity.rel_closed_loop = 0.40
+        self.commands.base_velocity.rel_closed_loop_yaw = 0.20
+        self.commands.base_velocity.rel_open_loop = 0.15
