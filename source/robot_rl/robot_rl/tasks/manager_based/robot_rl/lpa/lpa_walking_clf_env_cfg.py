@@ -1376,3 +1376,37 @@ class LpaWalkingCLFRoughV10EnvCfg(LpaWalkingCLFRoughV9EnvCfg):
         super().__post_init__()
         self.rewards.elbow_depth.params["lo"] = -0.95
 
+
+
+@configclass
+class LpaWalkingCLFGraph1EnvCfg(LpaWalkingCLFGraphTurnEnvCfg):
+    """graphturn19 (am-nai): the graph env on SEAM-EXACT references,
+    with standing given real curriculum mass.
+
+    Two changes against the graphturn variant, each answering a
+    measured graphturn18 failure:
+
+      library  chain1/graph1 instead of skill_smoke. Its locomotion
+               refs are snipped from ONE 9-domain chain solve, so
+               every stand->walk / cycle / walk->stand seam agrees to
+               <=0.02 rad AND <=0.02 rad/s by construction, against
+               the 0.36-0.4 m/s mismatch between the separately
+               solved segments. gt18's own post-mortem blamed
+               mid-gait reference swaps.
+
+      standing rel_standing_envs 0.05 -> 0.25. gt18 gave frozen-phase
+               standing 5% of envs and could not hold a pinned zero
+               command for two seconds. Standing here means FEET
+               TOGETHER (the certified stop pose, +-1 mm stagger) —
+               a different state from the staggered double support
+               the phase-hold law freezes at.
+
+    A SEPARATE env id: graphturn18 trained under
+    LpaWalkingCLFGraphTurnEnvCfg, and editing that in place would make
+    its run declaration describe an env it never saw.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.traj_ref.path = "lpa_lib/trajectories/graph1"
+        self.commands.base_velocity.rel_standing_envs = 0.25

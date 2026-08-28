@@ -20,7 +20,9 @@ import argparse
 import torch
 
 
-def pad_first_layers(sd: dict, extra: int, critic_extra: int) -> list[str]:
+def pad_first_layers(sd: dict, extra: int, critic_extra: int,
+                    grown: dict | None = None) -> list[str]:
+    grown = {} if grown is None else grown
     padded = []
     for key, w in sd.items():
         if not key.endswith(".weight") or w.ndim != 2:
@@ -38,6 +40,7 @@ def pad_first_layers(sd: dict, extra: int, critic_extra: int) -> list[str]:
         if add <= 0:
             continue
         pad = torch.zeros(w.shape[0], add, dtype=w.dtype)
+        grown[tuple(w.shape)] = add
         sd[key] = torch.cat([w, pad], dim=1)
         padded.append(f"{key}: {tuple(w.shape)} -> {tuple(sd[key].shape)}")
     return padded
@@ -56,13 +59,31 @@ def main() -> int:
 
     ckpt = torch.load(args.inp, map_location="cpu", weights_only=False)
     sd = ckpt["model_state_dict"]
-    padded = pad_first_layers(sd, args.extra, ce)
+    grown: dict = {}
+    padded = pad_first_layers(sd, args.extra, ce, grown)
     assert padded, "no first-layer matrices found — naming mismatch?"
     for line in padded:
         print("padded", line)
-    # The optimizer state no longer matches the grown parameters —
-    # drop it (fresh optimizer on resume; standard for surgery).
-    ckpt.pop("optimizer_state_dict", None)
+    # PAD the optimizer state; do NOT drop it. rsl_rl's
+    # OnPolicyRunner.load() indexes loaded_dict["optimizer_state_dict"]
+    # unconditionally whenever it is resuming, so a checkpoint without
+    # that key does not get "a fresh optimizer" — it raises KeyError
+    # two minutes into Isaac with the GPU already warm. Adam's moments
+    # have the same shape as the parameter they track, so they take
+    # exactly the same zero columns as the weight matrices.
+    opt = ckpt.get("optimizer_state_dict")
+    if opt and grown:
+        moments = 0
+        for entry in opt.get("state", {}).values():
+            for mkey, mval in list(entry.items()):
+                if not torch.is_tensor(mval) or mval.dim() != 2:
+                    continue
+                add = grown.get(tuple(mval.shape))
+                if add:
+                    pad = torch.zeros(mval.shape[0], add, dtype=mval.dtype)
+                    entry[mkey] = torch.cat([mval, pad], dim=1)
+                    moments += 1
+        print(f"padded {moments} optimizer moment tensor(s)")
     torch.save(ckpt, args.out)
     print(f"wrote {args.out}")
     return 0

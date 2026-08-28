@@ -12,6 +12,7 @@ import cli_args
 ENVIRONMENTS = {
     "lpa_walking_clf": "LPA-walking-clf",  # tinh
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh 8.5d
+    "lpa_walking_clf_graph1": "LPA-walking-clf-graph1",
     "lpa_walking_clf_graphturn": "LPA-walking-clf-graphturn",
     "lpa_walking_clf_ramp": "LPA-walking-clf-ramp",  # tinh-lpa-ramp.5
     "lpa_walking_clf_rough": "LPA-walking-clf-rough",  # terrain robustness
@@ -55,6 +56,7 @@ ENVIRONMENTS = {
 EXPERIMENT_NAMES = {
     "lpa_walking_clf": "lpa_walking_clf",  # tinh
     "lpa_walking_clf_skill": "lpa_walking_clf",  # tinh 8.5d (shared exp dir)
+    "lpa_walking_clf_graph1": "lpa_walking_clf",  # am-nai (shared exp dir)
     "lpa_walking_clf_graphturn": "lpa_walking_clf",  # tinh 7.7 (shared exp dir)
     "lpa_walking_clf_ramp": "lpa_walking_clf",  # tinh-lpa-ramp.5 (shared exp dir)
     "lpa_walking_clf_rough": "lpa_walking_clf",  # rough (shared exp dir)

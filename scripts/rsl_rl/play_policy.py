@@ -23,6 +23,7 @@ SIM_ENVIRONMENTS = {
     # camera (obs include the +5 skill channels the checkpoint
     # expects).
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh
+    "lpa_walking_clf_graph1": "LPA-walking-clf-graph1",  # am-nai
     "lpa_walking_clf_graphturn": "LPA-walking-clf-graphturn",  # tinh
     "lpa_walking_clf_ramp": "LPA-walking-clf-ramp",  # tinh-lpa-ramp.5
     # No play variant; play the TRAIN cfg so the terrain generator is
