@@ -1350,3 +1350,29 @@ class LpaWalkingCLFRoughV9EnvCfg(LpaWalkingCLFRoughV8EnvCfg):
             params={"joint_names": ["L_ELBOW", "R_ELBOW"],
                     "lo": -1.20, "hi": 0.10})
 
+
+@configclass
+class LpaWalkingCLFRoughV10EnvCfg(LpaWalkingCLFRoughV9EnvCfg):
+    """V9 with the elbow band placed where TRAINING lives.
+
+    v9 read ~1e-4 and did nothing. Diagnosis (2026-08-28): play uses
+    act_inference (deterministic mean action) while training samples
+    at noise std 2.56, and the elbow's -2.2 lower STOP clips that
+    noise asymmetrically — so the deployed pose sits ~0.4 rad deeper
+    than anything training visits. Measured: deterministic rollouts
+    median -1.4/-1.6 with 66% of steps past -1.20, IDENTICAL on flat
+    and rough (so it is not terrain); training's own logged elbow
+    error (0.38 against a -0.6 reference) puts the training-time
+    elbow near -1.0 — INSIDE v9's band, which is exactly why it
+    never fired.
+
+    A band can only shape states the training distribution visits.
+    It moves to -0.95: inside that distribution, firing on the
+    deeper half, dragging the distribution up — and with it the
+    deterministic pose the videos actually show.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.elbow_depth.params["lo"] = -0.95
+
