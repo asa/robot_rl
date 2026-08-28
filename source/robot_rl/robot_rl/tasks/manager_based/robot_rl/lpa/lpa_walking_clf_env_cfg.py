@@ -382,6 +382,27 @@ class LpaWalkingCLFEnvCfg(HumanoidEnvCfg):
         self.events.randomize_ground_contact_friction.params[
             "asset_cfg"].body_names = [".*_ANKLE"]
 
+        # SURFACE: butyl tread on plywood (user, 2026-08-28). The BOM
+        # confirms the feet are butyl (TREAD, 8x, 1.79 kg) — a
+        # high-hysteresis rubber, so grip is high and rebound is low.
+        # The inherited G1 range (static 0.3-1.6, dynamic 0.3-1.2,
+        # restitution 0-0.2) spans ice to tacky track and asks the
+        # policy to be robust to surfaces it will never meet; the cost
+        # is paid as conservatism on the one surface it does.
+        # Rubber on dry wood runs ~0.6-0.95 static in the literature,
+        # varying with finish, dust and humidity, so centre ~0.8 and
+        # keep +-0.2 for that variation rather than for a different
+        # planet. make_consistent already enforces dynamic <= static.
+        # Restitution drops to near zero: butyl barely rebounds, and
+        # the inherited 0.2 was flagged "consider upping this" for a
+        # different robot on a different floor.
+        self.events.randomize_ground_contact_friction.params[
+            "static_friction_range"] = (0.6, 1.0)
+        self.events.randomize_ground_contact_friction.params[
+            "dynamic_friction_range"] = (0.5, 0.85)
+        self.events.randomize_ground_contact_friction.params[
+            "restitution_range"] = (0.0, 0.08)
+
         # The G1 obs/reward stacks carry two name-bearing terms:
         # the critic's contact_state sensor and the undesired-contact
         # penalty's everything-but-feet regex.
