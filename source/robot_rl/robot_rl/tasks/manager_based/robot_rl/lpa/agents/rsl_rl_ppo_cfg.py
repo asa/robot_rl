@@ -35,3 +35,42 @@ class PPORunnerCfgH48(PPORunnerCfg):
     # here rather than the shared G1 base so G1 envs keep upstream
     # behaviour.
     save_interval = 100
+
+
+@configclass
+class PPORunnerCfgH48LowEnt(PPORunnerCfgH48):
+    """H48 with the exploration bonus cut 8x: 0.008 -> 0.001.
+
+    WHY (2026-08-28). Training and playback were running different
+    robots. Training samples actions from the policy's distribution;
+    playback (and deployment) uses the distribution's MEAN. That is
+    normal — but this policy widened its own noise std from the 1.0
+    it starts at to 2.56, and at that width the two diverge in kind,
+    not just degree: the mean action folds the elbow onto its -2.2
+    mechanical stop, while the sampled poses training is rewarded on
+    average out near -0.9, because nudges past a hard stop do
+    nothing and nudges away from it move the arm.
+
+    Consequence: the deep fold in every play video is a state the
+    training distribution essentially never visits, so no reward
+    defined on that distribution can reach it. Two elbow bands
+    (rough029 at -1.20, rough030 at -0.95) both read ~1e-4 proving
+    exactly this.
+
+    So the lever is not another penalty — it is closing the gap.
+    Nothing ever pushed back on the widening; the entropy bonus pays
+    for it. 0.001 is deliberately aggressive for a 500-iteration
+    smoke: the question is whether the std moves AT ALL on this
+    timescale, and a small step would be unreadable. Tune back up
+    once the direction is known.
+
+    The std itself is a LEARNED parameter restored from the resumed
+    checkpoint (2.56), so this run starts wide and must earn its way
+    down — that decay is the first gate.
+    """
+
+    def __post_init__(self):
+        if hasattr(super(), "__post_init__"):
+            super().__post_init__()
+        self.algorithm.entropy_coef = 0.001
+

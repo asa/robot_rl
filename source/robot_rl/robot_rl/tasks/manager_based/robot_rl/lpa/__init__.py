@@ -79,6 +79,16 @@ if not _registered:
     )
 
     gym.register(
+        id="LPA-walking-clf-rough-lowent",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFRoughV10EnvCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:PPORunnerCfgH48LowEnt",
+        },
+    )
+
+    gym.register(
         id="LPA-walking-clf-rough-elbow-depth-tuned",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",
         disable_env_checker=True,
