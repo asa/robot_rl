@@ -177,6 +177,29 @@ class LpaWalkingEventsCfg(HumanoidEventsCfg):
                 "joint_add_range": [-0.1, 0.1]}
     )
 
+    # OVERHEAD TRAVELLER (automaton am-gj0). The LPA is never operated
+    # off the rig for safety (user 2026-08-28), so training it unaided
+    # trains against a machine that does not exist — and a HARDER one,
+    # since the rig carries part of the weight. On the clad 110.5 kg
+    # robot the reference gait already saturates knees, hips, ankle,
+    # waist yaw and both shoulders at 100% of limit.
+    #
+    # NOT mdp.apply_external_force_torque: that helper never passes
+    # is_global, so its wrench lands in the BODY frame and would tilt
+    # with the torso. A rope pulls world-up. mdp.overhead_traveller
+    # applies is_global=True.
+    #
+    # 15.4 kg is the same fraction of body weight (13.9%) that 10 kg
+    # was on the 71.9 kg unclad robot.
+    overhead_traveller = EventTerm(
+        func=mdp.overhead_traveller,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="TORSO_ROLL"),
+            "lift_kg": 15.4,
+        },
+    )
+
     joint_friction_params = EventTerm(
         func=mdp.randomize_joint_parameters_multi_friction,
         mode="startup",
