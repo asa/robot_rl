@@ -1543,88 +1543,63 @@ class LpaWalkingCLFClad2EnvCfg(LpaWalkingCLFGraph1EnvCfg):
 
 
 @configclass
-class LpaWalkingCLFClad3EnvCfg(LpaWalkingCLFClad2EnvCfg):
-    """clad_graph2 with the rough family's ARM CONTROL, on FLAT ground.
+class LpaWalkingCLFClad3EnvCfg(LpaWalkingCLFRoughV10EnvCfg):
+    """The ROUGH terminal, terrain forced FLAT, driving clad_graph2.
 
-    clad1 fell over and its arms left the sagittal plane (Asa, watching
-    the render at 7100 iterations). Its reward set had ZERO arm terms:
-    the skill env branches off the BASE, and every arm mitigation was
-    built in the rough lineage V3..V10, which is not on that path.
+    clad1 fell over and its arms left the sagittal plane. Its reward
+    set had ZERO arm terms: the skill env branches off the BASE, and
+    every arm mitigation was built in the rough lineage V3..V10, which
+    is not on that path.
 
-    Ported here rather than inherited, because LpaWalkingCLFRoughEnvCfg
-    is "the plain walking env plus terrain -- no skill slots": it would
-    bring rough ground we do not want yet and drop the skill slots the
-    behaviour library needs. Flat ground first (Asa, 2026-08-31).
+    Composed this way round on Asa's suggestion (2026-08-31): "take
+    the rough env but force the terrain to always be flat at first".
+    Inheriting V10 takes ALL ten generations -- arms_home,
+    arms_track_linear, arms_vel_track, the asymmetric
+    arms_deviation_cap with V8's tight roll bands, arm_contact,
+    elbow_depth, upright, torso_pitch, and whatever else those
+    generations settled that a hand-picked port would miss. The first
+    attempt at this class DID hand-pick seven terms -- the same
+    mistake that produced clad1: choosing an ancestor without
+    accounting for what the choice drops.
 
-    Each term is the rough version verbatim, with the generation it
-    settled in:
+    What must be added back, because rough is "the plain walking env
+    plus terrain -- no skill slots":
 
-      arms_home           V3   hold near the reference pose
-      arms_track_linear   V4, reweighted -0.5 in V7
-      arms_vel_track      V5
-      arms_deviation_cap  V5, made ASYMMETRIC in V7, weight -6.0 and
-                          the tight roll bands in V8. This is the term
-                          that keeps the arms parallel to the sagittal
-                          plane; the bands came out of the rough26
-                          diagnosis (tinh-5aft).
-      arm_contact         V7   prices arm-on-body. Without it nothing
-                          stops the arms folding across the chest --
-                          the failure that got videos rejected
-                          2026-08-24. Sensor is .*_ELBOW, NOT _WRIST:
-                          wrist links hang on fixed joints and merge
-                          into the elbow body in PhysX, so _WRIST
-                          matches nothing (rough27 died on that).
-      elbow_depth         V9, lo retuned to -0.95 in V10
-      upright             V5   sigma_deg 9.0
-
-    NOT ported: the terrain generator, and V5's feet_air_time 3.0 /
-    xy_vel 2.0 stride levers -- those were tuned against rough ground
-    and this env's stride comes from the clad reference.
+      terrain   forced to plane, generator None. Flat ground first.
+      skills    the traj_ref library, slot vocabulary, param channels
+                and the skill_onehot / skill_params observations that
+                LpaWalkingCLFSkillEnvCfg would have supplied.
+      sampler   graph_turn_sampler, NOT the skill env's laser sampler:
+                clad_graph2 has turns and no laser references, and the
+                laser sampler resolves laser_enter BY NAME.
     """
 
     def __post_init__(self):
         super().__post_init__()
-        import math as _math
+        from isaaclab.managers import ObservationTermCfg as _ObsTerm
 
-        from isaaclab.envs import mdp as _isaac_mdp
-        from isaaclab.managers import RewardTermCfg as _RewT
-        from isaaclab.managers import SceneEntityCfg as _SceneCfg
+        # FLAT FIRST. V10 inherits the rough terrain generator; take
+        # the arm and stability work without the ground it was tuned on.
+        self.scene.terrain.terrain_type = "plane"
+        self.scene.terrain.terrain_generator = None
 
-        from robot_rl.tasks.manager_based.robot_rl import mdp as _mdp
+        self.commands.traj_ref.path = "lpa_lib/trajectories/clad_graph2"
+        self.commands.traj_ref.skill_slots = [
+            "locomotion", "walking", "laser"]
+        self.commands.traj_ref.param_channels = [
+            "azimuth", "wall_height"]
 
-        self.rewards.arms_home = _RewT(
-            func=_isaac_mdp.joint_deviation_l1, weight=-0.5,
-            params={"asset_cfg": _SceneCfg(
-                "robot",
-                joint_names=[".*_SHOULDER_.*", ".*_ELBOW"])})
-        self.rewards.arms_track_linear = _RewT(
-            func=_mdp.joint_pos_group_error_l2, weight=-0.5,
-            params={"command_name": "traj_ref", "group": "arms"})
-        self.rewards.arms_vel_track = _RewT(
-            func=_mdp.joint_vel_group_reward, weight=0.4,
-            params={"command_name": "traj_ref",
-                    "sigma": 0.5 * _math.sqrt(8), "group": "arms"})
-        self.rewards.arms_deviation_cap = _RewT(
-            func=_mdp.joint_group_deviation_cap_asym, weight=-6.0,
-            params={"command_name": "traj_ref", "group": "arms",
-                    "theta_max": 0.4,
-                    "bands": {
-                        "L_SHOULDER_YAW": (-0.10, 0.40),
-                        "R_SHOULDER_YAW": (-0.40, 0.10),
-                        "L_SHOULDER_ROLL": (-0.10, 0.15),
-                        "R_SHOULDER_ROLL": (-0.15, 0.10),
-                        "L_ELBOW": (-0.30, 0.30),
-                        "R_ELBOW": (-0.30, 0.30),
-                    }})
-        self.rewards.arm_contact = _RewT(
-            func=_mdp.undesired_contacts, weight=-2.0,
-            params={"sensor_cfg": _SceneCfg("contact_forces",
-                                            body_names=[".*_ELBOW"]),
-                    "threshold": 1.0})
-        self.rewards.elbow_depth = _RewT(
-            func=_mdp.joint_abs_band, weight=-8.0,
-            params={"joint_names": ["L_ELBOW", "R_ELBOW"],
-                    "lo": -0.95, "hi": 0.10})
-        self.rewards.upright = _RewT(
-            func=_mdp.upright_bonus, weight=1.0,
-            params={"sigma_deg": 9.0})
+        for group in (self.observations.policy,
+                      self.observations.critic):
+            group.skill_onehot = _ObsTerm(
+                func=mdp.skill_onehot,
+                params={"command_name": "traj_ref"})
+            group.skill_params = _ObsTerm(
+                func=mdp.skill_params,
+                params={"command_name": "traj_ref"})
+
+        self.events.graph_skills = EventTerm(
+            func=mdp.graph_turn_sampler,
+            mode="interval",
+            interval_range_s=(0.5, 0.5),
+            params={"command_name": "traj_ref", "p_turn": 0.10})
