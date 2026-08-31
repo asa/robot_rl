@@ -1661,7 +1661,7 @@ class LpaWalkingCLFClad4EnvCfg(LpaWalkingCLFClad3EnvCfg):
     stand_to_walk explicitly, which is how graph_turn_sampler's
     docstring says turning is supposed to be entered. Nearest-gait
     dropping an env straight onto a turn gait BYPASSED that traversal
-    -- see am-2ts. Widen these ranges back once flat walking is a
+    -- see am-kax. Widen these ranges back once flat walking is a
     keeper; Asa: "We need to get this all working on flat ground
     first."
 
