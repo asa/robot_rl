@@ -1582,6 +1582,13 @@ class LpaWalkingCLFClad3EnvCfg(LpaWalkingCLFRoughV10EnvCfg):
         # the arm and stability work without the ground it was tuned on.
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
+        # ... and the curriculum that rides on it. terrain_levels
+        # promotes a robot a ROW when it walks past half a patch; with
+        # no generator there are no rows to promote into. The base LPA
+        # env keeps this None for exactly that reason and RoughEnvCfg
+        # re-enables it, so re-disabling is part of "force the terrain
+        # flat" rather than an extra opinion of mine.
+        self.curriculum.terrain_levels = None
 
         self.commands.traj_ref.path = "lpa_lib/trajectories/clad_graph2"
         self.commands.traj_ref.skill_slots = [
