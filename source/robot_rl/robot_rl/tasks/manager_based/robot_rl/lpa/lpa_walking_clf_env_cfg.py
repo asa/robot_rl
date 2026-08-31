@@ -1507,3 +1507,10 @@ class LpaWalkingCLFClad1EnvCfg(LpaWalkingCLFSkillEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.commands.traj_ref.path = "lpa_lib/trajectories/clad_graph1"
+        # The skill env samples laser enter/exit on an interval, and
+        # graph_skill_sampler resolves those BY NAME:
+        #   ei = lib.ref_id_of("laser_enter")  -> KeyError
+        # 90 s into a smoke, because this library has no laser refs.
+        # The skill one-hot and params observations stay; what goes is
+        # the sampler for skills that do not exist here.
+        self.events.graph_skills = None
