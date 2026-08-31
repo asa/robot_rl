@@ -1610,3 +1610,76 @@ class LpaWalkingCLFClad3EnvCfg(LpaWalkingCLFRoughV10EnvCfg):
             mode="interval",
             interval_range_s=(0.5, 0.5),
             params={"command_name": "traj_ref", "p_turn": 0.10})
+
+@configclass
+class LpaWalkingCLFClad4EnvCfg(LpaWalkingCLFClad3EnvCfg):
+    """clad3 with the command distribution narrowed to WALKING.
+
+    WHY, measured off clad3's own config rather than guessed. Asa,
+    watching the one-hour render: "There is a whole lot of holding the
+    arms out behind, and standing around. Very little walking. Are we
+    playing out stomp walk reference here?"
+
+    We were -- 41.7% of the time. clad_graph2 has THREE periodic
+    gaits, and the free state picks among them by nearest-gait under a
+    weighted L2 with vel_yaw weighted 2.5x:
+
+        lpa_stomp        vel_x  0.5732   vel_yaw  0.0
+        lpa_turn_left    vel_x -0.01     vel_yaw +0.2646
+        lpa_turn_right   vel_x -0.01     vel_yaw -0.2646
+
+    The turns are PIVOTS -- vel_x -0.01, no forward travel. Against
+    commands of vx ~ U(0, 0.58) and wz ~ U(-0.29, 0.29), any
+    meaningful yaw pulls selection onto a pivot:
+
+        turn gait   48.8 %      <- standing around
+        stomp walk  41.7 %
+        phase held   9.5 %      <- |cmd| < hold_phi_threshold 0.10,
+                                   pose frozen, no gait cycle at all
+
+    Two separate faults, both fixed here:
+
+    1. HALF THE SAMPLES WERE PIVOTS. clad1 never had this -- its
+       library, clad_graph1, has exactly one periodic gait, so its
+       locomotion envs tracked the walk 100% of the time. Pointing
+       clad3 at clad_graph2 for its turns swapped half of training
+       into turning in place.
+
+    2. THE WALKING HALF FOUGHT ITSELF. The only straight gait is
+       0.573 m/s while commanded vx averaged 0.290, so the CLF term
+       tracked a 0.57 reference while the velocity term asked for
+       0.29. A compromise between those looks like marking time.
+
+    Narrowing vx to a band AROUND the gait speed fixes both: mean
+    commanded vx becomes 0.515 against the gait's 0.573, and the
+    turns stop being selected at all.
+
+        stomp 41.7% -> 100%,  turn 48.8% -> 0%,  held 9.5% -> 0%
+
+    THE TURNS ARE NOT DELETED, only unreachable by nearest-gait. The
+    graph sampler still traverses walk -> walk_to_stand -> turn ->
+    stand_to_walk explicitly, which is how graph_turn_sampler's
+    docstring says turning is supposed to be entered. Nearest-gait
+    dropping an env straight onto a turn gait BYPASSED that traversal
+    -- see am-2ts. Widen these ranges back once flat walking is a
+    keeper; Asa: "We need to get this all working on flat ground
+    first."
+
+    A NEW ID, not an edit to clad3: run 2026-08-31_clad3 trained 1000
+    iterations under clad3 and its results are on am-w51, so
+    redefining clad3 would make that run's declaration describe an env
+    it never saw.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # A BAND around the gait, not a range from zero.
+        self.commands.base_velocity.ranges.lin_vel_x = (0.45, 0.58)
+        # Enough yaw to hold a heading, far too little to select a
+        # pivot: at wz = 0.03 the stomp is nearer by 27x.
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.03, 0.03)
+        # Standing envs command (0,0,0), which is below
+        # hold_phi_threshold and freezes the phase mid-stomp -- that
+        # is the held pose in the render, arms wherever the cycle left
+        # them. No standing while we are fixing walking.
+        self.commands.base_velocity.rel_standing_envs = 0.0
