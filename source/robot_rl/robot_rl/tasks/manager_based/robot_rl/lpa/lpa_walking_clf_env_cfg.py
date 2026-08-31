@@ -1682,4 +1682,19 @@ class LpaWalkingCLFClad4EnvCfg(LpaWalkingCLFClad3EnvCfg):
         # hold_phi_threshold and freezes the phase mid-stomp -- that
         # is the held pose in the render, arms wherever the cycle left
         # them. No standing while we are fixing walking.
+        #
+        # ALL FOUR, because VelocityTrackingCommand asserts they sum
+        # to 1 and dropping standing alone leaves 0.95 -- clad4's
+        # first launch died on exactly that. The freed 0.05 goes to
+        # closed_loop, whose envs walk to a y-target and heading. The
+        # ramp env sets all four the same way for the same reason.
         self.commands.base_velocity.rel_standing_envs = 0.0
+        self.commands.base_velocity.rel_closed_loop = 0.55
+        self.commands.base_velocity.rel_closed_loop_yaw = 0.25
+        self.commands.base_velocity.rel_open_loop = 0.20
+        #
+        # The narrowed ang_vel_z binds the CLOSED-LOOP envs too, which
+        # is why it is enough on its own: the heading controller's
+        # output is clipped to ranges.ang_vel_z (velocity_commands.py
+        # _update_command), so no env class can steer harder than the
+        # band allows and reach a turn conditioner.
