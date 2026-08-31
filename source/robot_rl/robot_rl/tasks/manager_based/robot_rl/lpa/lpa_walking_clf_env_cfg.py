@@ -1514,3 +1514,29 @@ class LpaWalkingCLFClad1EnvCfg(LpaWalkingCLFSkillEnvCfg):
         # The skill one-hot and params observations stay; what goes is
         # the sampler for skills that do not exist here.
         self.events.graph_skills = None
+
+
+@configclass
+class LpaWalkingCLFClad2EnvCfg(LpaWalkingCLFGraph1EnvCfg):
+    """Graph1's layout against the clad library WITH turns.
+
+    clad1 had to sit on the SKILL env because clad_graph1 has no turn
+    references and graph_turn_sampler resolves them BY STRING --
+    ref_id_of() for lpa_turn_left, lpa_turn_right, stand_to_walk,
+    walk_to_stand and walk_to_stand_R -- so a library missing one
+    raises KeyError at load. clad_graph2 supplies all five.
+
+    The turn underneath is the first solved on the clad robot at all:
+    every earlier one came from a probe reading a hand-built path into
+    the retired TINH checkout, so it was fitted to 26 links / 71.9 kg
+    against today's 44 / 110.5 (am-3v7).
+
+    Keeps Graph1's laser-free sampler: Graph1 REPLACES graph_skills
+    with graph_turn_sampler, which resolves no laser_enter/laser_exit,
+    so this library legitimately has none and does not need clad1's
+    `graph_skills = None`.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.traj_ref.path = "lpa_lib/trajectories/clad_graph2"
