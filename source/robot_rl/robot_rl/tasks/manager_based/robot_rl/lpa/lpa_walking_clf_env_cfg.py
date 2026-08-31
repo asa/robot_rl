@@ -1475,7 +1475,7 @@ class LpaWalkingCLFGraph1EnvCfg(LpaWalkingCLFGraphTurnEnvCfg):
 
 
 @configclass
-class LpaWalkingCLFClad1EnvCfg(LpaWalkingCLFGraph1EnvCfg):
+class LpaWalkingCLFClad1EnvCfg(LpaWalkingCLFSkillEnvCfg):
     """graph1's layout against the CLAD behaviour library.
 
     clad_graph1 is the first library solved for the robot that exists:
@@ -1490,6 +1490,14 @@ class LpaWalkingCLFClad1EnvCfg(LpaWalkingCLFGraph1EnvCfg):
     both transitions. Seams to the cycle are 0.0800 rad / 0.3500 rad/s
     (stand->walk) and 0.1000 / 0.3500 (walk->stand), the velocity half
     at the certified tolerance.
+
+    Based on the SKILL env, not Graph1. Graph1 inherits GraphTurn,
+    whose graph_skills event does
+    lib.ref_id_of("lpa_turn_left"/"lpa_turn_right"), so it HARD-REQUIRES
+    turn references in its library -- measured: a smoke on the Graph1
+    base died with KeyError: 'walk_to_stand' at that lookup. The clad
+    library has no turns, because the only turn solves that exist are
+    unclad, which is exactly what this env is here to stop using.
 
     A SEPARATE env id, for the same reason graph1 was: editing graph1
     in place would make graphturn21's run declaration describe an env
