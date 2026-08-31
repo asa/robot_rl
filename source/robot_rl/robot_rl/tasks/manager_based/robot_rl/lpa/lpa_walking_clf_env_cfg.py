@@ -195,7 +195,14 @@ class LpaWalkingEventsCfg(HumanoidEventsCfg):
         func=mdp.overhead_traveller,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="TORSO_ROLL"),
+            # WAIST_YAW, the rotor the ropes actually attach to --
+            # not TORSO_ROLL, which sits +0.0253 x / +0.1186 z from it
+            # in the zero pose. Applying the lift 12 cm high and 2.5 cm
+            # forward of the rotor makes a moment the rig does not,
+            # and the whole point of this term is the ankle moment.
+            # MuJoCo (lpa_sim.build_lpa_mjcf) and trajopt
+            # (walk_stack.constraints.traveller) both act at WAIST_YAW.
+            "asset_cfg": SceneEntityCfg("robot", body_names="WAIST_YAW"),
             "lift_kg": 15.4,
         },
     )
