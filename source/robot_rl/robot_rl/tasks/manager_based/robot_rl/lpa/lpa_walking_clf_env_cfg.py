@@ -1472,3 +1472,30 @@ class LpaWalkingCLFGraph1EnvCfg(LpaWalkingCLFGraphTurnEnvCfg):
         self.commands.base_velocity.rel_closed_loop = 0.40
         self.commands.base_velocity.rel_closed_loop_yaw = 0.20
         self.commands.base_velocity.rel_open_loop = 0.15
+
+
+@configclass
+class LpaWalkingCLFClad1EnvCfg(LpaWalkingCLFGraph1EnvCfg):
+    """graph1's layout against the CLAD behaviour library.
+
+    clad_graph1 is the first library solved for the robot that exists:
+    110.474 kg with cladding, and with the overhead traveller modelled
+    as a world-up FORCE at WAIST_YAW (15.4 kg -- the same lift this env
+    applies) rather than as removed mass. Every earlier library, graph1
+    included, was solved either unclad or against the mass-removal
+    uplift, so a policy trained on one imitated a reference its own
+    body could not produce.
+
+    Three behaviours, not graph1's full skill set: the stomp cycle plus
+    both transitions. Seams to the cycle are 0.0800 rad / 0.3500 rad/s
+    (stand->walk) and 0.1000 / 0.3500 (walk->stand), the velocity half
+    at the certified tolerance.
+
+    A SEPARATE env id, for the same reason graph1 was: editing graph1
+    in place would make graphturn21's run declaration describe an env
+    it never saw.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.traj_ref.path = "lpa_lib/trajectories/clad_graph1"
