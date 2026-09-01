@@ -951,11 +951,15 @@ def arm_phase_mirror(env, shift_s: float = 0.745,
     err = 0.5 * (torch.mean(e_l * e_l, dim=1) + torch.mean(e_r * e_r, dim=1))
     valid = env.episode_length_buf >= k
     err = torch.where(valid, err, torch.zeros_like(err))
-    if not st["printed"] and bool(valid.all()):
+    # One-time check that the shift is the gait's: over the envs whose
+    # buffer is full (never ALL of them -- some env is always freshly
+    # reset), the shifted error must be the small one.
+    if not st["printed"] and int(valid.sum()) >= max(8, env.num_envs // 4):
         st["printed"] = True
         e0 = ql - s * qr
-        print(f"[arm_phase_mirror] shift {shift_s:.3f} s = {k} steps; first full-buffer step: "
-              f"mean shifted mirror error {err.mean().item():.4f} rad^2 vs "
-              f"unshifted {torch.mean(e0 * e0).item():.4f} rad^2 "
+        e0 = torch.mean(e0 * e0, dim=1)
+        print(f"[arm_phase_mirror] shift {shift_s:.3f} s = {k} steps; over {int(valid.sum())} "
+              f"full-buffer envs: mean shifted mirror error {err[valid].mean().item():.4f} rad^2 "
+              f"vs unshifted {e0[valid].mean().item():.4f} rad^2 "
               f"(counterswing => shifted << unshifted)", flush=True)
     return err
