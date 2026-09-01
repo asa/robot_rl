@@ -873,93 +873,103 @@ def arm_torso_clearance(env, margin: float = 0.02,
     return torch.sum(pen * pen, dim=1)
 
 
-# Left/right arm joint pairs and the mirror sign (roll and yaw negate
-# across the sagittal plane; pitch and elbow do not) -- the same table
-# lpa_arm_symmetry_probe measures with.
-_ARM_MIRROR = (("L_SHOULDER_PITCH", "R_SHOULDER_PITCH", +1.0),
-               ("L_SHOULDER_ROLL", "R_SHOULDER_ROLL", -1.0),
-               ("L_SHOULDER_YAW", "R_SHOULDER_YAW", -1.0),
-               ("L_ELBOW", "R_ELBOW", +1.0))
+# Arm points the mirror term compares, in each ELBOW body frame: the
+# elbow origin and the hand sphere centre from the collision bank
+# (lpa_collision_spheres L_ELBOW#3 / R_ELBOW#3).
+_ARM_POINTS = (("L_ELBOW", (0.0, 0.018, -0.43)),
+               ("R_ELBOW", (0.0, -0.015, -0.43)))
 
 
 def arm_phase_mirror(env, shift_s: float = 0.745,
                      asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
                      ) -> torch.Tensor:
-    """tinh (am-m7l.14 follow-up): the two arms must be the SAME arm,
-    half a gait cycle apart.
+    """tinh (am-m7l.18): the two arms must be the SAME arm, half a gait
+    cycle apart -- measured in space, not in joint angles.
 
     Asa on the cladwalkclr render (2026-09-01): 'the right arm looks
     good, but the left arm is very different from it. can we have a
     term that penalizes differences from left to right, but only when
     shifted by the counterswing phase?'
 
-    The walking reference is half-periodic: the library holds one
-    step, the full cycle is two, and the left arm's motion is the
-    right arm's mirrored and delayed by one step period. So the term
-    compares q_L(t) with S q_R(t - shift) and q_R(t) with S q_L(t -
-    shift), S the mirror sign per joint (roll, yaw negate), and pays
-    the mean squared difference over the four joint pairs, both
-    directions averaged. A plain (unshifted) mirror term would punish
-    the counterswing itself.
+    WHY CARTESIAN. The reference IS an exact physical mirror with a
+    half-cycle delay: with pinocchio FK in the CORE frame, each hand
+    matches the y-mirror of the other hand half a cycle earlier to
+    1 mm (284 mm unshifted), each elbow to 2 mm (163 mm)
+    (automaton //modules/trajopt/walk_stack:ref_mirror_probe). In
+    JOINT space the same relation is not the axis-string table: the
+    fit on the reference is roll S=+1, yaw S=-1, elbow S=-1 (exact)
+    and pitch S=+1 with a 0.564 rad offset and a 0.11 rad residual,
+    because the two sides' joint conventions differ (tinh-as7q.21).
+    A joint-space draft with the axis-string signs trained the left
+    roll and elbow toward the wrong sign (cladwalksym, killed). Space
+    is convention-free, is what the reference satisfies, and is what
+    a viewer sees.
 
-    shift_s is the reference's step period: 0.745 s for the clad stomp
-    (FK off the library: SS 0.450 s + DS 0.295 s), 37 control steps at
-    50 Hz. The check that the shift is RIGHT is empirical and printed
-    once, the first step every env has a full buffer: mean shifted
-    error against mean unshifted error. For a counterswing the
-    unshifted error is large and the shifted one small; if they come
-    out alike, the shift is wrong or the arms are not counterswinging.
+    THE TERM. For each side, two points in the base frame -- the elbow
+    body origin and the hand sphere centre (bank offsets, in the
+    elbow frame). With M = diag(1, -1, 1) the sagittal mirror:
+        e_L(t) = p_L(t) - M p_R(t - shift),  e_R(t) = p_R(t) - M p_L(t - shift)
+    mean squared distance over the two points and both directions,
+    in m^2. A 10 cm asymmetry costs 0.01; weight it in the hundreds.
+    A plain (unshifted) mirror would punish the counterswing itself.
 
-    Per env a ring buffer holds the last shift+1 arm joint vectors;
-    the term is zero until the episode is older than the shift, so a
-    reset never pairs this episode's arm with the previous one's.
-    Called exactly once per step by the reward manager, which is what
+    shift_s is the step period: 0.745 s for the clad stomp (library
+    cycle 1.489 s, half-periodic), 37 control steps at 50 Hz. The
+    one-time print, once a quarter of the envs have a full buffer,
+    gives shifted vs unshifted error: for a counterswing the shifted
+    one must be the small one. On the reference the ratio is ~1:250.
+
+    Per env a ring buffer holds the last shift+1 point sets; the term
+    is zero until the episode is older than the shift, so a reset
+    never pairs this episode's arm with the previous one's. Called
+    exactly once per step by the reward manager, which is what
     advances the buffer.
     """
     asset: Articulation = env.scene[asset_cfg.name]
     st = getattr(env, "_arm_phase_mirror_state", None)
     if st is None:
-        names_l = [l for l, _r, _s in _ARM_MIRROR]
-        names_r = [r for _l, r, _s in _ARM_MIRROR]
-        il, _ = asset.find_joints(names_l, preserve_order=True)
-        ir, _ = asset.find_joints(names_r, preserve_order=True)
-        dev = asset.data.joint_pos.device
+        names = list(asset.data.body_names)
+        dev = asset.data.body_pos_w.device
         k = int(round(shift_s / env.step_dt))
         if k < 1:
             raise ValueError(f"shift_s {shift_s} is under one control step {env.step_dt}")
         st = {
-            "il": torch.tensor(il, device=dev),
-            "ir": torch.tensor(ir, device=dev),
-            "sign": torch.tensor([s for _l, _r, s in _ARM_MIRROR], device=dev),
+            "ids": torch.tensor([names.index(b) for b, _o in _ARM_POINTS], device=dev),
+            "off": torch.tensor([o for _b, o in _ARM_POINTS], dtype=torch.float32, device=dev),
+            "mirror": torch.tensor([1.0, -1.0, 1.0], device=dev),
             "k": k,
-            "buf": torch.zeros(env.num_envs, k + 1, 2, len(_ARM_MIRROR), device=dev),
+            "buf": torch.zeros(env.num_envs, k + 1, 2, 2, 3, device=dev),  # side, point, xyz
             "ptr": 0,
             "printed": False,
         }
         env._arm_phase_mirror_state = st
-    q = asset.data.joint_pos
-    ql, qr = q[:, st["il"]], q[:, st["ir"]]                  # [E, 4] each
-    k, buf = st["k"], st["buf"]
-    ptr = st["ptr"]
-    buf[:, ptr, 0], buf[:, ptr, 1] = ql, qr
-    old = (ptr + 1) % (k + 1)                                 # t - k
-    ql_d, qr_d = buf[:, old, 0], buf[:, old, 1]
+    root_p = asset.data.root_pos_w                              # [E, 3]
+    root_q = asset.data.root_quat_w                             # [E, 4]
+    bp = asset.data.body_pos_w[:, st["ids"]]                    # [E, 2, 3] elbow origins
+    bq = asset.data.body_quat_w[:, st["ids"]]                   # [E, 2, 4]
+    hand = bp + quat_apply(bq, st["off"].unsqueeze(0).expand(bp.shape[0], -1, -1))
+    pts_w = torch.stack([bp, hand], dim=2)                      # [E, side, point, 3]
+    rel = pts_w - root_p[:, None, None, :]
+    rq = root_q[:, None, None, :].expand(-1, 2, 2, -1)
+    pts = quat_rotate_inverse(rq.reshape(-1, 4), rel.reshape(-1, 3)).reshape(pts_w.shape)
+    k, buf, ptr = st["k"], st["buf"], st["ptr"]
+    buf[:, ptr] = pts
+    old = (ptr + 1) % (k + 1)                                   # t - k
+    pts_d = buf[:, old]
     st["ptr"] = old
-    s = st["sign"][None, :]
-    e_l = ql - s * qr_d
-    e_r = qr - s * ql_d
-    err = 0.5 * (torch.mean(e_l * e_l, dim=1) + torch.mean(e_r * e_r, dim=1))
+    m = st["mirror"]
+    e_l = pts[:, 0] - m * pts_d[:, 1]                           # L(t) vs M R(t-k)   [E, 2, 3]
+    e_r = pts[:, 1] - m * pts_d[:, 0]
+    err = 0.5 * (torch.sum(e_l * e_l, dim=-1).mean(dim=1) + torch.sum(e_r * e_r, dim=-1).mean(dim=1))
     valid = env.episode_length_buf >= k
     err = torch.where(valid, err, torch.zeros_like(err))
-    # One-time check that the shift is the gait's: over the envs whose
-    # buffer is full (never ALL of them -- some env is always freshly
-    # reset), the shifted error must be the small one.
     if not st["printed"] and int(valid.sum()) >= max(8, env.num_envs // 4):
         st["printed"] = True
-        e0 = ql - s * qr
-        e0 = torch.mean(e0 * e0, dim=1)
+        e0 = pts[:, 0] - m * pts[:, 1]
+        e0 = torch.sum(e0 * e0, dim=-1).mean(dim=1)
         print(f"[arm_phase_mirror] shift {shift_s:.3f} s = {k} steps; over {int(valid.sum())} "
-              f"full-buffer envs: mean shifted mirror error {err[valid].mean().item():.4f} rad^2 "
-              f"vs unshifted {e0[valid].mean().item():.4f} rad^2 "
-              f"(counterswing => shifted << unshifted)", flush=True)
+              f"full-buffer envs: mean shifted mirror error {err[valid].mean().item():.5f} m^2 "
+              f"(rms {err[valid].mean().sqrt().item()*100:.1f} cm) vs unshifted "
+              f"{e0[valid].mean().item():.5f} m^2 (rms {e0[valid].mean().sqrt().item()*100:.1f} cm) "
+              f"(counterswing => shifted << unshifted; the reference is ~1:250)", flush=True)
     return err

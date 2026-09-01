@@ -2045,13 +2045,17 @@ class LpaWalkingCLFCladWalkSymEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
     0.30 rad. The reference is mirror-symmetric with a half-cycle
     delay, so a gap that large is the policy's.
 
-    THIS ENV: one new reward, mdp.arm_phase_mirror -- q_L(t) against
-    S q_R(t - 0.745 s) and the reverse, S the sagittal mirror sign
-    (roll, yaw negate), mean squared over the four pairs, zero until
-    an episode is older than the shift. 0.745 s is the stomp step
-    period (the library is half-periodic: one step held, the full
-    cycle is two). Weight -2: a 0.3 rad gap on every pair costs
-    -0.18/step, a 0.6 rad gap -0.72/step, against progress +9.66 and
+    THIS ENV: one new reward, mdp.arm_phase_mirror -- IN SPACE: the
+    elbow origin and hand point of each arm, in the base frame,
+    against the y-mirrored points of the other arm 0.745 s earlier
+    (the stomp step period; the library cycle is 1.489 s), mean
+    squared distance, zero until an episode is older than the shift.
+    Cartesian because the reference is an exact physical mirror with
+    a half-cycle delay (hands to 1 mm) while its joint-space mirror is
+    not the axis-string sign table -- a joint-space draft with those
+    signs (cladwalksym, killed at iter 30) pushed the left roll and
+    elbow the wrong way. Weight -200: a 5 cm asymmetry on both points
+    costs -0.5/step, 10 cm costs -2/step, against progress +9.66 and
     the clearance term's ~-0.1. Inherits cladwalkclr (clearance term
     stays: it is what stopped the resets), obs unchanged, resumes its
     checkpoint -- one variable.
@@ -2067,5 +2071,5 @@ class LpaWalkingCLFCladWalkSymEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
         super().__post_init__()
         self.rewards.arm_phase_mirror = RewTerm(
             func=mdp.arm_phase_mirror,
-            weight=-2.0,
+            weight=-200.0,
             params={"shift_s": 0.745})
