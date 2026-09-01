@@ -941,6 +941,13 @@ def arm_phase_mirror(env, shift_s: float = 0.745,
             "buf": torch.zeros(env.num_envs, k + 1, 2, 2, 3, device=dev),  # side, point, xyz
             "ptr": 0,
             "printed": False,
+            # calls since this env's episode began, counted HERE: the
+            # buffer is only as old as the calls that filled it, and
+            # episode_length_buf can be older than that (a resumed run
+            # whose envs already count as settled at the first call read
+            # zero slots and printed 0.257 m^2 -- the arm points' |p|^2).
+            "age": torch.zeros(env.num_envs, dtype=torch.long, device=dev),
+            "last_ep": torch.full((env.num_envs,), -1, dtype=torch.long, device=dev),
         }
         env._arm_phase_mirror_state = st
     root_p = asset.data.root_pos_w                              # [E, 3]
@@ -961,14 +968,16 @@ def arm_phase_mirror(env, shift_s: float = 0.745,
     e_l = pts[:, 0] - m * pts_d[:, 1]                           # L(t) vs M R(t-k)   [E, 2, 3]
     e_r = pts[:, 1] - m * pts_d[:, 0]
     err = 0.5 * (torch.sum(e_l * e_l, dim=-1).mean(dim=1) + torch.sum(e_r * e_r, dim=-1).mean(dim=1))
-    # Valid only once the episode is older than TWO shifts: at exactly
-    # one shift the delayed sample is the reset pose, and the first
-    # smoke's print (shifted 0.26 m^2 vs unshifted 0.038) was that
-    # transient, not the gait -- the arm-symmetry probe averaging 600
-    # steps on the same checkpoint measured 0.033 vs 0.055.
-    valid = env.episode_length_buf >= 2 * k
+    # Valid only once THIS buffer has seen two shifts of the current
+    # episode: one shift back is the reset transient, and the buffer's
+    # age is counted by calls, not by episode_length_buf (see "age").
+    ep = env.episode_length_buf
+    continuing = ep == st["last_ep"] + 1
+    st["age"] = torch.where(continuing, st["age"] + 1, torch.zeros_like(st["age"]))
+    st["last_ep"] = ep.clone()
+    valid = st["age"] >= 2 * k
     err = torch.where(valid, err, torch.zeros_like(err))
-    settled = env.episode_length_buf >= 3 * k
+    settled = st["age"] >= 3 * k
     if not st["printed"] and int(settled.sum()) >= max(8, env.num_envs // 4):
         st["printed"] = True
         e0 = pts[:, 0] - m * pts[:, 1]
