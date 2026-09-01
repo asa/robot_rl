@@ -23,6 +23,7 @@ SIM_ENVIRONMENTS = {
     # camera (obs include the +5 skill channels the checkpoint
     # expects).
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh
+    "lpa_walking_clf_cladwalk2": "LPA-walking-clf-cladwalk2",  # solved arms
     "lpa_walking_clf_cladwalk": "LPA-walking-clf-cladwalk",  # walk baseline
     "lpa_walking_clf_clad4": "LPA-walking-clf-clad4",  # walking-only cmds
     "lpa_walking_clf_clad3": "LPA-walking-clf-clad3",  # clad + turns + arms

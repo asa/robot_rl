@@ -1748,3 +1748,55 @@ class LpaWalkingCLFCladWalkEnvCfg(LpaWalkingCLFClad4EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.events.graph_skills.params["p_turn"] = 0.0
+
+
+@configclass
+class LpaWalkingCLFCladWalk2EnvCfg(LpaWalkingCLFCladWalkEnvCfg):
+    """cladwalk, tracking the arms trajopt ACTUALLY SOLVED.
+
+    Asa on the cladwalk1 hour render: "I am not seeing enough
+    reference following, as the arms are way way more active than in
+    the reference."
+
+    They were, and not by a tuning margin -- the policy was tracking a
+    target that is not the reference. V6's ArmSwingOverlayCfg rewrites
+    traj_ref before the policy sees it:
+
+        pitch   +0.40 rad ADDED to the reference
+        yaw     REPLACED by an ellipse, [-0.55, -0.10] L-signed
+
+    Measured on clad_graph2's lpa_stomp, the reference already swings
+    the shoulders +-0.25 rad about a +0.22 mean, anti-phase
+    (corr(L,R) = -0.887), with solved yaw in [-0.672, -0.270]. So the
+    overlay roughly 2.6x'd the commanded pitch swing and threw the
+    solved carriage away.
+
+    WHY THE OVERLAY EXISTED, and why it no longer should. V6's own
+    docstring: "the carriage yaw (-0.70) leaves 0.9 mm of forearm-hip
+    clearance over any pitch swing -- the reference itself made
+    swinging impossible, which is why rough21-24 never swung
+    regardless of reward shaping." That was the UNCLAD walk_forward
+    reference. The clad stomp was re-solved WITH wrist-thigh clearance
+    (tinh-lpa-clfrl.7.10) and swings on its own. The overlay is curing
+    a disease this reference does not have, and the cure became the
+    symptom.
+
+    Same failure shape as clad1 one level down: inheriting the rough
+    lineage wholesale brings terms tuned against a reference that no
+    longer looks like the one being tracked.
+
+    STILL OPEN, deliberately not changed here so the result is
+    attributable:
+
+      - arms_deviation_cap's asymmetric bands and arms_vel_track were
+        tuned against the OVERLAID target. They are deviation-from-
+        traj_ref terms so they remain meaningful, but the band widths
+        want a second look once the arms track.
+      - reference tracking is outweighed by progress 9.66 to 2.61 per
+        step, which is why the hips and CoM move less than the
+        reference. That is a separate change (am-m7l).
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.traj_ref.arm_swing = None
