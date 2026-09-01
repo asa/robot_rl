@@ -1923,7 +1923,11 @@ class LpaWalkingCLFCladWalkClearEnvCfg(LpaWalkingCLFCladWalk2EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        from ...mdp.commands.traj_tracking.trajectory_cmd_cfg import (
-            ArmSwingOverlayCfg as _Swing,
-        )
-        self.commands.traj_ref.arm_swing = _Swing()
+        # ABSOLUTE, matching V6 six hundred lines above. The relative
+        # form I first wrote (...mdp) resolves to manager_based.mdp,
+        # not robot_rl.mdp, and died inside Isaac with
+        # ModuleNotFoundError after the env was staged.
+        from robot_rl.tasks.manager_based.robot_rl.mdp.commands.\
+            traj_tracking.trajectory_cmd_cfg import ArmSwingOverlayCfg
+
+        self.commands.traj_ref.arm_swing = ArmSwingOverlayCfg()
