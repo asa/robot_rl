@@ -47,7 +47,7 @@ if not _registered:
             # RUNNER, so a difference between the two runs is the
             # entropy coefficient and nothing else.
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFCladWalk2EnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfgLowEnt",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:PPORunnerCfgLowEnt",
         },
     )
 
