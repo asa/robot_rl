@@ -1931,3 +1931,56 @@ class LpaWalkingCLFCladWalkClearEnvCfg(LpaWalkingCLFCladWalk2EnvCfg):
             traj_tracking.trajectory_cmd_cfg import ArmSwingOverlayCfg
 
         self.commands.traj_ref.arm_swing = ArmSwingOverlayCfg()
+
+
+@configclass
+class LpaWalkingCLFCladWalkArmEnvCfg(LpaWalkingCLFCladWalk2EnvCfg):
+    """Track the SOLVED arms hard enough that the reference's own
+    clearance suffices.
+
+    Asa: 'make the policy track well enough that 3.5 mm suffices.'
+
+    THE PROBLEM, measured rather than argued. Every reset in this
+    family is torso_contact -- forearm-to-chest self-collision, zero
+    falls, on three checkpoints (am-m7l.5). The stomp reference runs
+    at 2.9 mm worst clearance and the collision bank can buy it about
+    3.5 mm; asking 4.1 mm makes the solve infeasible with
+    L_SHOULDER_PITCH at 62/62 Nm. So no plausible margin survives a
+    policy that is a RADIAN off at the elbow. The margin is not the
+    lever -- the tracking is.
+
+    WHY THE ARMS ARE FREE. arms_track_linear is already the
+    right-shaped term: joint_pos_group_error_l2 is LINEAR in tracking
+    error, so unlike the exp form it has constant gradient at any
+    distance and can retrieve a limb that has left the basin (its
+    docstring: rough21 walked 3400 iters with both arms wrapped and
+    the exp term flat at ~0.13). It simply has no authority --
+    measured -0.266 per step against progress at +9.66, under 3%.
+    Every other arm term is smaller still: arms_deviation_cap
+    -0.022, elbow_depth -0.0002.
+
+    That is why six reward configurations all gave 2.6-7.2x the
+    reference's arm range -- with the shaping stack and without it,
+    split tracking and unsplit, noise 2.2 and 1.0. Nothing was ever
+    asking the arms to be anywhere.
+
+    THIS ENV: arms_track_linear -0.5 -> -4.0, on cladwalk2's
+    overlay-off base so the target is the SOLVED carriage rather than
+    V6's ellipse. Tracking the overlay hard would only make the punch
+    precise.
+
+    8x is deliberately decisive rather than a nudge: at -0.5 the term
+    is 3% of progress, and a 2x step would still be inside the noise
+    of what six previous configurations failed to move. If it
+    overshoots, the failure is legible -- arms pinned rigidly on
+    reference, legs degraded because effort moved to the arms -- and
+    that is a more useful result than another null.
+
+    RISK, stated: progress is load-bearing for not falling, and this
+    does not touch it. If the legs regress, the ratio is wrong rather
+    than the direction.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.arms_track_linear.weight = -4.0
