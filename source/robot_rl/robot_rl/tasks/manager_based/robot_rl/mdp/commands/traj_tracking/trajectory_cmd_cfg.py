@@ -66,6 +66,7 @@ class TrajectoryCommandCfg(CommandTermCfg):
     percent_hold_phi: float = -1
     hold_phi_threshold: float = -1
 
+
     # --- contact-gated phase advance (tinh: rough-terrain fix) ---
     #
     # The reference clock is t = episode_length_buf * step_dt, a pure

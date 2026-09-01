@@ -50,6 +50,26 @@ class TrajectoryData:
     # (--skill / --param key=value). Defaults keep legacy yamls valid.
     skill: str = "locomotion"
     params: dict = None
+    # Is this a LOCOMOTION GAIT the velocity mixer may select?
+    #
+    # Asa, 2026-08-31: "the turns are not periodic really. they don't
+    # fit as a locomotion mixer really." A turn IS cyclic -- it has to
+    # be, to repeat for N periods -- so its phasing type is genuinely
+    # full_periodic. What it is not is a steady state you can hold at
+    # a commanded yaw rate: you enter it, run it, and leave. It is a
+    # maneuver that loops, not a gait.
+    #
+    # Conflating those two put the turns in the nearest-gait pool,
+    # where a yaw command selected one 48.8% of the time on clad3 --
+    # at arbitrary phase, with no transitions either side, which is
+    # precisely the pendulum9b failure graph_turn_sampler was built to
+    # prevent (am-kax).
+    #
+    # A property of the TRAJECTORY, not of any env: no env should mix
+    # a turn into velocity-conditioned locomotion, so encoding it once
+    # here beats an exclusion list every env has to remember. Defaults
+    # True, so every existing yaml keeps its meaning.
+    mixable: bool = True
 
 
 class TrajectoryManager(ManagerBase):
@@ -319,6 +339,7 @@ class TrajectoryManager(ManagerBase):
             reference_frames=ref_frames,
             # Behavior-graph metadata (8.5d)
             skill=data.get('skill', 'locomotion'),
+            mixable=bool(data.get('mixable', True)),
             params=(data['conditioner'].get('params')
                     if isinstance(data['conditioner'], dict) else None),
         )

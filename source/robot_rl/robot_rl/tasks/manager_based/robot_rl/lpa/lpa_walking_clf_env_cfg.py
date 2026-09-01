@@ -1673,7 +1673,10 @@ class LpaWalkingCLFClad4EnvCfg(LpaWalkingCLFClad3EnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        # A BAND around the gait, not a range from zero.
+        # A BAND around the gait, not a range from zero. This keeps
+        # the tracked reference and the velocity reward agreeing on a
+        # speed; what makes turns unreachable by command is the
+        # mixable: false on the turn trajectories themselves.
         self.commands.base_velocity.ranges.lin_vel_x = (0.45, 0.58)
         # Enough yaw to hold a heading, far too little to select a
         # pivot: at wz = 0.03 the stomp is nearer by 27x.

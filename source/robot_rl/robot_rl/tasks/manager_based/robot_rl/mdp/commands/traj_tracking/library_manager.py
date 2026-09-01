@@ -134,8 +134,49 @@ class LibraryManager(ManagerBase):
         self.episodic_mask = torch.tensor(
             [m.traj_data.trajectory_type == TrajectoryType.EPISODIC
              for m in self.trajectory_managers], device=self.device)
-        self.periodic_indices = torch.nonzero(
-            ~self.episodic_mask).flatten()
+        # THE POOL IS LOCOMOTION GAITS, not merely "not episodic".
+        # Episodic segments were always excluded -- their zeroed
+        # velocity conditioner would win every slow command -- but a
+        # turn is periodic (it must cycle to repeat) while still being
+        # a MANEUVER rather than a gait, so "not episodic" let turns
+        # in. On clad3 a yaw command selected one 48.8% of the time,
+        # at arbitrary phase, with no transitions either side: the
+        # pendulum9b failure by the back door (am-kax).
+        #
+        # Excluded from the POOL only. An explicit active_ref_id >= 0
+        # bypasses this lookup entirely (get_traj_indices), so the
+        # graph sampler still traverses walk -> walk_to_stand -> turn
+        # -> stand_to_walk, which is the entry its contract intended.
+        self.mixable_mask = torch.tensor(
+            [m.traj_data.mixable for m in self.trajectory_managers],
+            device=self.device)
+        mixable = (~self.episodic_mask) & self.mixable_mask
+        self.periodic_indices = torch.nonzero(mixable).flatten()
+        # A library that HAS periodic gaits and marks them all
+        # unmixable is a mistake, not a behavior-only library: the
+        # fallback below would quietly serve trajectory 0 for every
+        # velocity command.
+        if len(self.periodic_indices) == 0 and bool(
+                (~self.episodic_mask).any()):
+            raise ValueError(
+                f"every periodic gait in {self.folder_path} is "
+                "mixable: false -- nothing is left for the velocity "
+                "mixer to select. At least one locomotion gait must "
+                "stay mixable.")
+        # REPORT THE POOL. There is no unit test for this: LibraryManager
+        # needs torch and isaaclab, neither of which the automaton test
+        # env has. So the code says what it selected and every run's log
+        # carries the answer -- a flag that parses and changes nothing is
+        # the failure mode this class of edit has (the prone probe's dead
+        # --env-type went unnoticed for months).
+        print("[library] nearest-gait pool: "
+              + ", ".join(self.ref_names[int(i)]
+                          for i in self.periodic_indices)
+              + "  | traversal-only: " + (", ".join(
+                  n for n, m in zip(self.ref_names,
+                                    self.mixable_mask.tolist())
+                  if not m) or "none")
+              + f"  | episodic: {int(self.episodic_mask.sum())}")
         if len(self.periodic_indices) == 0:
             # Behavior-only library: locomotion fallback is traj 0.
             self.periodic_indices = torch.zeros(
