@@ -2005,12 +2005,16 @@ class LpaWalkingCLFCladWalkClrEnvCfg(LpaWalkingCLFCladWalkArmEnvCfg):
                           stage 2 (MUMPS, 36.7 GB) and was killed.
 
     THIS ENV: one new reward, mdp.arm_torso_clearance -- the trajopt's
-    sphere bank (56 arm spheres against the 5 torso/head spheres, 280
-    pairs) on the policy's live body poses, each pair paying
-    ((margin - d)/margin)^2 below margin = 20 mm. Weight -5 so that at
-    10 mm on the closest pair the cost is -1.25/step and at contact
-    -5, against progress at +9.66: decisive, the way cladwalkarm's 8x
-    was, so a null result is a null and not a nudge inside the noise.
+    own collision-bank rows between the arm links (shoulder roll/yaw,
+    elbow: 224 sphere rows) and TORSO_ROLL, on the policy's live body
+    poses, each row paying ((m - d)/m)^2 below its margin m =
+    min(20 mm, rest - 2 mm), the bank's clamp. Parity of these rows on
+    Isaac poses was measured (lpa_sphere_parity_probe: 2.8 mm on the
+    binding shoulder-roll pair vs the bank's 6.2 mm rest). Weight -5 so
+    that at 10 mm on the closest row the cost is -1.25/step and at
+    contact -5, against progress at +9.66: decisive, the way
+    cladwalkarm's 8x was, so a null result is a null and not a nudge
+    inside the noise.
 
     Inherits cladwalkarm (tracking 8x stays on: it is the lineage and
     it measured as inert). Obs layout unchanged, so cladwalkarm's
