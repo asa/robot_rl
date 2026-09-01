@@ -39,6 +39,19 @@ if not _registered:
     )
 
     gym.register(
+        id="LPA-walking-clf-cladwalk3",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            # SAME env cfg as cladwalk2 -- the only change is the
+            # RUNNER, so a difference between the two runs is the
+            # entropy coefficient and nothing else.
+            "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFCladWalk2EnvCfg",
+            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfgLowEnt",
+        },
+    )
+
+    gym.register(
         id="LPA-walking-clf-cladwalk2",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",
         disable_env_checker=True,

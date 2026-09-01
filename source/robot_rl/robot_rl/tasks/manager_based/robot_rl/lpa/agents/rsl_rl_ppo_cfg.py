@@ -74,3 +74,42 @@ class PPORunnerCfgH48LowEnt(PPORunnerCfgH48):
             super().__post_init__()
         self.algorithm.entropy_coef = 0.001
 
+
+@configclass
+class PPORunnerCfgLowEnt(PPORunnerCfg):
+    """The entropy cut ALONE: 0.008 -> 0.001, rollout left at 24.
+
+    H48LowEnt bundles this with num_steps_per_env 24 -> 48. Both may
+    be right, but bundling them makes a bad result unattributable and
+    halves iterations per hour on top. This is the half that the
+    cladwalk measurements point at directly.
+
+    WHY, measured on cladwalk2 at ~1000 iterations. The policy widens
+    its own action noise from the 1.0 it starts at to 2.00-2.26, and
+    at that width the arms cannot be held to the reference:
+
+        joint         ref range   achieved   ratio
+        shoulder yaw      0.402      1.179    2.9x
+        shoulder pitch    0.600      1.767    2.9x
+        shoulder roll     0.080      0.524    6.5x
+        elbow             0.300      2.154    7.2x
+
+    The elbow sits at mean -1.52 with a 2.15 rad range, i.e. swinging
+    to roughly -2.5 against a -2.2 mechanical stop -- the exact state
+    H48LowEnt's docstring describes: "the mean action folds the elbow
+    onto its -2.2 mechanical stop, while the sampled poses training is
+    rewarded on average out near -0.9."
+
+    And the widening is not a transient. Over clad1's 7482 iterations
+    the noise std went 2.37 -> 2.64 while every tracking term was
+    flat or falling (joint_pos -17.4%): the entropy bonus was still
+    paying to widen long after nothing else improved.
+
+    save_interval from H48 is deliberately NOT inherited here -- that
+    is a checkpoint-density choice, not part of the entropy question.
+    """
+
+    def __post_init__(self):
+        if hasattr(super(), "__post_init__"):
+            super().__post_init__()
+        self.algorithm.entropy_coef = 0.001
