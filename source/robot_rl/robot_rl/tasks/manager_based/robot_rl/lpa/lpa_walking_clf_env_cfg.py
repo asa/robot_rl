@@ -1701,3 +1701,50 @@ class LpaWalkingCLFClad4EnvCfg(LpaWalkingCLFClad3EnvCfg):
         # output is clipped to ranges.ang_vel_z (velocity_commands.py
         # _update_command), so no env class can steer harder than the
         # band allows and reach a turn conditioner.
+
+@configclass
+class LpaWalkingCLFCladWalkEnvCfg(LpaWalkingCLFClad4EnvCfg):
+    """THE WALKING BASELINE on the clad stomp reference. Nothing else.
+
+    Asa: "turns appear to be breaking things, so I want to be sure
+    that we have good walking policy we can control first" -- and,
+    on what this is for, "I am trying to get the first trained model
+    on the new clad stomp walk working as a baseline we can extend."
+
+    Taking turns out of the nearest-gait mixer (mixable: false) was
+    necessary and did not finish the job: graph_turn_sampler enters
+    them by the OTHER route, and that route was the larger one.
+
+        turn traversal = walk_to_stand 1.273
+                       + turn 1.890 x turn_periods 2.0
+                       + stand_to_walk 0.900          = 5.95 s
+        p_turn 0.10 per 0.5 s tick -> a walking env draws one every
+        ~5.0 s
+
+        => 54.4% of the time in a traversal, 45.6% walking
+
+    So clad4 walked 45.6% of the time, against clad3's 41.7%. Barely
+    moved, for a different reason. p_turn = 0 is what actually makes
+    this a walking run.
+
+    WHAT THIS LEAVES. The stomp cycle, commanded in a band around its
+    own speed, and nothing else: with p_turn = 0 no env ever leaves
+    _FREE, so the transitions are never entered either. That is
+    correct here rather than a loss -- walk_to_stand and
+    stand_to_walk exist to start and stop a commanded walk, and a
+    command band of (0.45, 0.58) never stops.
+
+    THE SAMPLER STAYS INSTALLED, at p_turn 0. Its skill_onehot and
+    skill_params observations are what make this env 79 wide, so
+    removing it would break checkpoint compatibility with everything
+    in this lineage. Re-enabling turns is then one number, on a
+    policy that can already walk -- which is the "baseline we can
+    extend".
+
+    NOT a rename of clad4: run 2026-08-31_clad4b is training under
+    clad4 as this is written.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.events.graph_skills.params["p_turn"] = 0.0

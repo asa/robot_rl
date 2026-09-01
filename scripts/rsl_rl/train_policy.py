@@ -12,6 +12,7 @@ import cli_args
 ENVIRONMENTS = {
     "lpa_walking_clf": "LPA-walking-clf",  # tinh
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh 8.5d
+    "lpa_walking_clf_cladwalk": "LPA-walking-clf-cladwalk",
     "lpa_walking_clf_clad4": "LPA-walking-clf-clad4",
     "lpa_walking_clf_clad3": "LPA-walking-clf-clad3",
     "lpa_walking_clf_clad2": "LPA-walking-clf-clad2",
@@ -60,6 +61,7 @@ ENVIRONMENTS = {
 EXPERIMENT_NAMES = {
     "lpa_walking_clf": "lpa_walking_clf",  # tinh
     "lpa_walking_clf_skill": "lpa_walking_clf",  # tinh 8.5d (shared exp dir)
+    "lpa_walking_clf_cladwalk": "lpa_walking_clf",  # walking baseline
     "lpa_walking_clf_clad4": "lpa_walking_clf",  # clad3 + walking-only cmds
     "lpa_walking_clf_clad3": "lpa_walking_clf",  # clad + turns + arm stack
     "lpa_walking_clf_clad2": "lpa_walking_clf",  # clad + turns
