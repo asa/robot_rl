@@ -15,7 +15,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import wrap_to_pi
 from isaaclab.sensors import ContactSensor
 from isaaclab.markers import VisualizationMarkers
-from isaaclab.utils.math import euler_xyz_from_quat, wrap_to_pi, quat_rotate_inverse, yaw_quat, quat_rotate, quat_inv
+from isaaclab.utils.math import euler_xyz_from_quat, wrap_to_pi, quat_rotate_inverse, yaw_quat, quat_rotate, quat_inv, quat_apply
 
 KAPPA = 0.5
 
@@ -767,3 +767,90 @@ def forward_progress(env, command_name: str,
     cmd_x = cmd[:, 0]
     denom = torch.clamp(torch.abs(cmd_x), min=0.1)
     return torch.clamp(v_x * torch.sign(cmd_x) / denom, -1.0, 1.0)
+
+
+_ARM_LINKS = ("L_SHOULDER_YAW", "R_SHOULDER_YAW", "L_ELBOW", "R_ELBOW")
+_TORSO_LINKS = ("TORSO_ROLL",)
+
+
+def _sphere_group(asset: Articulation, links: tuple[str, ...]):
+    """Body ids, link-frame offsets [N,3] and radii [N] for every bank
+    sphere carried by `links`, in the asset's body order."""
+    from robot_rl.tasks.manager_based.robot_rl.lpa.lpa_collision_spheres import SPHERES
+    names = list(asset.data.body_names)
+    ids, off, rad = [], [], []
+    for link, o, r, _src in SPHERES:
+        if link in links:
+            ids.append(names.index(link))      # ValueError if the body is absent: loud
+            off.append(o)
+            rad.append(r)
+    if not ids:
+        raise ValueError(f"no bank spheres on {links}")
+    dev = asset.data.body_pos_w.device
+    return (torch.tensor(ids, device=dev),
+            torch.tensor(off, dtype=torch.float32, device=dev),
+            torch.tensor(rad, dtype=torch.float32, device=dev))
+
+
+def _sphere_centers(asset: Articulation, ids, off) -> torch.Tensor:
+    """World centres [E, N, 3] of spheres attached to bodies `ids` at
+    link-frame offsets `off`."""
+    p = asset.data.body_pos_w[:, ids]                       # [E, N, 3]
+    q = asset.data.body_quat_w[:, ids]                      # [E, N, 4]
+    return p + quat_apply(q, off.unsqueeze(0).expand(p.shape[0], -1, -1))
+
+
+def arm_torso_clearance(env, margin: float = 0.02,
+                        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+                        ) -> torch.Tensor:
+    """tinh (am-m7l.14): price the ARM-to-TORSO margin BEFORE contact.
+
+    Every reset on the clad walking line is torso_contact -- forearm
+    or hand into the chest, zero falls, on four checkpoints -- and the
+    only term that saw it was that termination: a cliff at >1 N with
+    no gradient leading up to it. Joint-space tracking weight did not
+    move the arms (cladwalkarm, 8x: 73 resets vs 74) and the banked
+    trajopt reference could not be solved (am-m7l.11). So this prices
+    the geometry itself, on the policy's live state.
+
+    The trajopt's own sphere bank (lpa_collision_spheres.SPHERES,
+    copied from automaton modules/collision) gives 56 spheres on the
+    upper arms and forearms/hands and 5 on TORSO_ROLL (torso + head).
+    For every arm/torso pair the clearance is
+        d = |c_arm - c_torso| - r_arm - r_torso
+    and the penalty is ((margin - d)/margin)^2 for d < margin, else 0,
+    summed over pairs -- a quadratic ramp that is zero when the arm is
+    clear, 1 per pair at touch, and grows with intrusion. Body frames
+    are the URDF link frames the offsets assume
+    (modules/wbc/lpa_sim/lpa_isaac_fk_parity.py holds that parity).
+
+    The first call prints the minimum clearance across envs, so the
+    smoke log shows whether the frames agree with the bank: at the
+    reset pose the arm/torso pairs sit a few millimetres apart in the
+    bank's rest measurement (6.2 mm on the binding pair); a wildly
+    different number means the offsets are being applied in the wrong
+    frame and the term is pricing nothing real.
+
+    Returns the SUM over pairs (weight it negative). Pairs are
+    cached on the env after the first call.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    cache = getattr(env, "_arm_torso_clearance_cache", None)
+    if cache is None:
+        cache = (_sphere_group(asset, _ARM_LINKS),
+                 _sphere_group(asset, _TORSO_LINKS))
+        env._arm_torso_clearance_cache = cache
+    (ai, ao, ar), (ti, to, tr) = cache
+    ca = _sphere_centers(asset, ai, ao)                     # [E, Na, 3]
+    ct = _sphere_centers(asset, ti, to)                     # [E, Nt, 3]
+    d = torch.cdist(ca, ct) - ar[None, :, None] - tr[None, None, :]
+    if not getattr(env, "_arm_torso_clearance_printed", False):
+        env._arm_torso_clearance_printed = True
+        dmin = d.amin(dim=(1, 2))
+        print(f"[arm_torso_clearance] pairs={d.shape[1]}x{d.shape[2]} "
+              f"first-call min clearance: min {dmin.min().item()*1e3:.1f} mm, "
+              f"median {dmin.median().item()*1e3:.1f} mm, "
+              f"max {dmin.max().item()*1e3:.1f} mm (margin {margin*1e3:.0f} mm)",
+              flush=True)
+    pen = torch.clamp(margin - d, min=0.0) / margin
+    return torch.sum(pen * pen, dim=(1, 2))

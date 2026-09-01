@@ -1984,3 +1984,42 @@ class LpaWalkingCLFCladWalkArmEnvCfg(LpaWalkingCLFCladWalk2EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.arms_track_linear.weight = -4.0
+
+
+@configclass
+class LpaWalkingCLFCladWalkClrEnvCfg(LpaWalkingCLFCladWalkArmEnvCfg):
+    """Price the arm-to-torso MARGIN, not just the contact cliff.
+
+    Asa 2026-09-01: 'lets try the clearance shaping reward.' (am-m7l.14)
+
+    THE MEASURED SITUATION. Every reset in this family is
+    torso_contact -- forearm/hand into the chest, zero falls -- on
+    four checkpoints. The only term that saw it was the illegal-contact
+    termination at >1 N on TORSO_ROLL: a cliff with no gradient
+    leading up to it, so the policy learns nothing about the chest
+    until it touches. Both other levers were tried and measured today:
+
+      joint tracking x8   cladwalkarm: 73 resets vs cladwalk3's 74,
+                          elbow range 2.15 vs 2.14 rad. Inert.
+      banked reference    3.5 mm bank in the stomp solve stalled in
+                          stage 2 (MUMPS, 36.7 GB) and was killed.
+
+    THIS ENV: one new reward, mdp.arm_torso_clearance -- the trajopt's
+    sphere bank (56 arm spheres against the 5 torso/head spheres, 280
+    pairs) on the policy's live body poses, each pair paying
+    ((margin - d)/margin)^2 below margin = 20 mm. Weight -5 so that at
+    10 mm on the closest pair the cost is -1.25/step and at contact
+    -5, against progress at +9.66: decisive, the way cladwalkarm's 8x
+    was, so a null result is a null and not a nudge inside the noise.
+
+    Inherits cladwalkarm (tracking 8x stays on: it is the lineage and
+    it measured as inert). Obs layout unchanged, so cladwalkarm's
+    checkpoint resumes directly.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.arm_torso_clearance = RewTerm(
+            func=mdp.arm_torso_clearance,
+            weight=-5.0,
+            params={"margin": 0.02})
