@@ -1800,3 +1800,71 @@ class LpaWalkingCLFCladWalk2EnvCfg(LpaWalkingCLFCladWalkEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.commands.traj_ref.arm_swing = None
+
+
+@configclass
+class LpaWalkingCLFCladWalkP9EnvCfg(LpaWalkingCLFCladWalk2EnvCfg):
+    """cladwalk with PENDULUM9B's arm treatment: track, do not shape.
+
+    Asa, 2026-09-01: "Pendulum 9b trained the arms fine so I wonder
+    what so much changed from how we trained that run? I know that was
+    the lighter version of the bot, but we used a similar character
+    for the reference walk and had a good looking walk policy come
+    out."
+
+    Diffed. cladwalk3 is pendulum9b's reward set PLUS eleven
+    rough-lineage terms, and pendulum9b has nothing it lacks:
+
+        arm_contact  arms_deviation_cap  arms_track_linear
+        arms_vel_track  elbow_depth  upright  torso_pitch
+        waist_quiet  joint_pos_{arms,legs,torso}
+
+    And the split cost the arms most of their tracking weight:
+
+        term              pendulum9b   cladwalk3
+        joint_pos            1.0         0.0   <- zeroed
+        joint_pos_arms        -          0.381
+        joint_pos_legs        -          0.476
+        joint_pos_torso       -          0.143
+
+    So the arms went from weight 1.0 to 0.381 -- a 2.6x cut in how
+    hard the reference pulls them -- and then eight band/cap terms
+    were layered on that push toward BOUNDS rather than toward the
+    reference. Measured consequence on cladwalk3: arm ranges 2.6-7.1x
+    the reference's, elbow 1.0 rad deeper than the reference and
+    riding its -2.2 stop.
+
+    The stack was built over V3..V10 to fix arms on ROUGH TERRAIN with
+    the UNCLAD walk_forward reference, whose carriage left 0.9 mm of
+    forearm-hip clearance and made swinging mechanically impossible.
+    The clad stomp swings +-0.25 rad on its own with real clearance.
+    The stack is solving a problem this reference does not have.
+
+    THIS ENV: pendulum9b's arm treatment, everything else cladwalk2.
+    Restores joint_pos to 1.0 over all joints, zeroes the three
+    splits, and removes the six ARM-shaping terms. torso_pitch and
+    waist_quiet stay -- they are not arm terms, and waist_quiet is
+    part of the waist guard trio added after the ramp env found a
+    heading exploit.
+
+    NOT A CLAIM THAT THE STACK IS WRONG IN GENERAL. It is a claim that
+    it is wrong HERE: flat ground, a reference with good arms, at
+    100% walking. Rung 4 (rough terrain) may well want it back.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # Track the whole body with one term at full weight, as
+        # pendulum9b did, instead of three splits summing to 1.0 that
+        # give the arms 0.381.
+        self.rewards.joint_pos.weight = 1.0
+        self.rewards.joint_pos_legs = None
+        self.rewards.joint_pos_arms = None
+        self.rewards.joint_pos_torso = None
+        # Shape nothing. Let the reference do the work.
+        self.rewards.arms_track_linear = None
+        self.rewards.arms_vel_track = None
+        self.rewards.arms_deviation_cap = None
+        self.rewards.arm_contact = None
+        self.rewards.elbow_depth = None
+        self.rewards.upright = None
