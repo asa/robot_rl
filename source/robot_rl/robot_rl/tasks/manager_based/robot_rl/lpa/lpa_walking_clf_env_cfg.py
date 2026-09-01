@@ -1868,3 +1868,62 @@ class LpaWalkingCLFCladWalkP9EnvCfg(LpaWalkingCLFCladWalk2EnvCfg):
         self.rewards.arm_contact = None
         self.rewards.elbow_depth = None
         self.rewards.upright = None
+
+
+@configclass
+class LpaWalkingCLFCladWalkClearEnvCfg(LpaWalkingCLFCladWalk2EnvCfg):
+    """Put the FOREARM CLEARANCE back. It was never about style.
+
+    Measured 2026-09-01 with lpa_reset_cause_probe on cladwalkp9,
+    pinned at 0.57 m/s:
+
+        torso_contact     91   100.0%
+        time_out / base_height / waist_twist / bad_orientation   0
+
+    NOT ONE FALL. Every reset is contact above 1 N on TORSO_ROLL,
+    which carries the torso and head spheres -- the forearms hitting
+    the chest. Asa called it from the video: "Likely resetting from
+    self collisions?"
+
+    So "pinned survival" was never measuring driveability in this
+    family; it was counting arm-to-torso strikes. And the count tracks
+    exactly the two mechanisms that kept the forearms clear, removed
+    one after the other:
+
+        run          overlay   arm_contact   resets
+        cladwalk1      yes         yes          16
+        cladwalk2      NO          yes          73
+        cladwalk3      NO          yes          74
+        cladwalkp9     NO          NO          130
+
+    ArmSwingOverlayCfg is a CLEARANCE DEVICE, not decoration. Its own
+    docstring: "at the pitch extremes the forearm is displaced
+    fore/aft so yaw-in is safe; at hip passage yaw must open out. Bank
+    clearance at the defaults below: 57-92 mm over the full cycle." I
+    removed it (am-m7l.5) reading that as history about the UNCLAD
+    reference, on the grounds that it distorted arm STYLE -- which it
+    did. It was also the only geometry keeping the arms off the body.
+
+    THIS ENV restores both, on top of everything learned since:
+    the overlay, arm_contact, the entropy cut (cladwalk3), turns out
+    of the mixer, p_turn 0, and the walking command band.
+
+    THE STYLE COST IS REAL AND UNRESOLVED. The overlay adds 0.40 rad
+    of pitch to a reference that already swings +-0.25 and REPLACES
+    the solved yaw [-0.672, -0.270] with an ellipse [-0.55, -0.10].
+    Asa's original complaint -- "the arms are way way more active than
+    in the reference" -- is a complaint about this overlay. Restoring
+    it trades that back for clearance.
+
+    The right answer is probably neither: a clearance CONSTRAINT
+    solved into the clad reference itself, so the trajopt arms are
+    both correct and safe. That is am-m7l.11. This run buys a working
+    baseline while that is built.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from ...mdp.commands.traj_tracking.trajectory_cmd_cfg import (
+            ArmSwingOverlayCfg as _Swing,
+        )
+        self.commands.traj_ref.arm_swing = _Swing()
