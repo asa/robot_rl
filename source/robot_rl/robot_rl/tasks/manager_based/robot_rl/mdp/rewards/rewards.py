@@ -961,15 +961,21 @@ def arm_phase_mirror(env, shift_s: float = 0.745,
     e_l = pts[:, 0] - m * pts_d[:, 1]                           # L(t) vs M R(t-k)   [E, 2, 3]
     e_r = pts[:, 1] - m * pts_d[:, 0]
     err = 0.5 * (torch.sum(e_l * e_l, dim=-1).mean(dim=1) + torch.sum(e_r * e_r, dim=-1).mean(dim=1))
-    valid = env.episode_length_buf >= k
+    # Valid only once the episode is older than TWO shifts: at exactly
+    # one shift the delayed sample is the reset pose, and the first
+    # smoke's print (shifted 0.26 m^2 vs unshifted 0.038) was that
+    # transient, not the gait -- the arm-symmetry probe averaging 600
+    # steps on the same checkpoint measured 0.033 vs 0.055.
+    valid = env.episode_length_buf >= 2 * k
     err = torch.where(valid, err, torch.zeros_like(err))
-    if not st["printed"] and int(valid.sum()) >= max(8, env.num_envs // 4):
+    settled = env.episode_length_buf >= 3 * k
+    if not st["printed"] and int(settled.sum()) >= max(8, env.num_envs // 4):
         st["printed"] = True
         e0 = pts[:, 0] - m * pts[:, 1]
         e0 = torch.sum(e0 * e0, dim=-1).mean(dim=1)
-        print(f"[arm_phase_mirror] shift {shift_s:.3f} s = {k} steps; over {int(valid.sum())} "
-              f"full-buffer envs: mean shifted mirror error {err[valid].mean().item():.5f} m^2 "
-              f"(rms {err[valid].mean().sqrt().item()*100:.1f} cm) vs unshifted "
-              f"{e0[valid].mean().item():.5f} m^2 (rms {e0[valid].mean().sqrt().item()*100:.1f} cm) "
+        print(f"[arm_phase_mirror] shift {shift_s:.3f} s = {k} steps; over {int(settled.sum())} "
+              f"settled envs: mean shifted mirror error {err[settled].mean().item():.5f} m^2 "
+              f"(rms {err[settled].mean().sqrt().item()*100:.1f} cm) vs unshifted "
+              f"{e0[settled].mean().item():.5f} m^2 (rms {e0[settled].mean().sqrt().item()*100:.1f} cm) "
               f"(counterswing => shifted << unshifted; the reference is ~1:250)", flush=True)
     return err

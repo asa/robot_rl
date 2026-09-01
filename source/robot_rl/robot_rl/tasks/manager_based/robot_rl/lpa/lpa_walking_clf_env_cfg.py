@@ -2054,9 +2054,13 @@ class LpaWalkingCLFCladWalkSymEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
     a half-cycle delay (hands to 1 mm) while its joint-space mirror is
     not the axis-string sign table -- a joint-space draft with those
     signs (cladwalksym, killed at iter 30) pushed the left roll and
-    elbow the wrong way. Weight -200: a 5 cm asymmetry on both points
-    costs -0.5/step, 10 cm costs -2/step, against progress +9.66 and
-    the clearance term's ~-0.1. Inherits cladwalkclr (clearance term
+    elbow the wrong way. Weight -40: the smoke on cladwalkclr's
+    checkpoint opened at 0.26 m^2 (51 cm rms, the arms in phase, not
+    counterphase), which at -200 was ~52/step -- several times
+    progress, enough to wreck the walk before fixing the arms. At -40
+    the opening cost is ~10/step, about progress, and a 5 cm residual
+    asymmetry still costs -0.1/step, the clearance term's scale.
+    Inherits cladwalkclr (clearance term
     stays: it is what stopped the resets), obs unchanged, resumes its
     checkpoint -- one variable.
 
@@ -2071,5 +2075,5 @@ class LpaWalkingCLFCladWalkSymEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
         super().__post_init__()
         self.rewards.arm_phase_mirror = RewTerm(
             func=mdp.arm_phase_mirror,
-            weight=-200.0,
+            weight=-40.0,
             params={"shift_s": 0.745})
