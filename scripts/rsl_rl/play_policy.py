@@ -23,6 +23,7 @@ SIM_ENVIRONMENTS = {
     # camera (obs include the +5 skill channels the checkpoint
     # expects).
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh
+    "lpa_walking_clf_cladwalksym": "LPA-walking-clf-cladwalksym",  # phase-shifted arm mirror
     "lpa_walking_clf_cladwalkclr": "LPA-walking-clf-cladwalkclr",  # arm-torso clearance
     "lpa_walking_clf_cladwalkarm": "LPA-walking-clf-cladwalkarm",  # arm authority
     "lpa_walking_clf_cladwalkclear": "LPA-walking-clf-cladwalkclear",  # clearance

@@ -2027,3 +2027,45 @@ class LpaWalkingCLFCladWalkClrEnvCfg(LpaWalkingCLFCladWalkArmEnvCfg):
             func=mdp.arm_torso_clearance,
             weight=-5.0,
             params={"margin": 0.02})
+
+
+@configclass
+class LpaWalkingCLFCladWalkSymEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
+    """The left arm is the right arm, half a cycle later.
+
+    Asa on the cladwalkclr render (2026-09-01): 'its much better than
+    the last passes, and the right arm looks good, but the left arm is
+    very different from it. can we have a term that penalizes
+    differences from left to right, but only when shifted by the
+    counterswing phase?'
+
+    MEASURED on cladwalkclr (arm-symmetry probe, mean actions, vx
+    0.515): shoulder pitch range L 1.09 vs R 1.21, roll 0.58 vs 0.27,
+    yaw 1.02 vs 0.85, elbow mean -1.55 vs -1.30; worst mirror gap
+    0.30 rad. The reference is mirror-symmetric with a half-cycle
+    delay, so a gap that large is the policy's.
+
+    THIS ENV: one new reward, mdp.arm_phase_mirror -- q_L(t) against
+    S q_R(t - 0.745 s) and the reverse, S the sagittal mirror sign
+    (roll, yaw negate), mean squared over the four pairs, zero until
+    an episode is older than the shift. 0.745 s is the stomp step
+    period (the library is half-periodic: one step held, the full
+    cycle is two). Weight -2: a 0.3 rad gap on every pair costs
+    -0.18/step, a 0.6 rad gap -0.72/step, against progress +9.66 and
+    the clearance term's ~-0.1. Inherits cladwalkclr (clearance term
+    stays: it is what stopped the resets), obs unchanged, resumes its
+    checkpoint -- one variable.
+
+    FAIL-with-information: the shifted error does not fall below the
+    unshifted one in the first-call print -> the shift is wrong for
+    this gait (measure the period, do not guess it); the arms become
+    symmetric and stop swinging -> the term is fighting the tracking
+    term and the weight is too high, halve it.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.arm_phase_mirror = RewTerm(
+            func=mdp.arm_phase_mirror,
+            weight=-2.0,
+            params={"shift_s": 0.745})

@@ -871,3 +871,91 @@ def arm_torso_clearance(env, margin: float = 0.02,
               flush=True)
     pen = torch.clamp(marg[None, :] - d, min=0.0) / marg[None, :]
     return torch.sum(pen * pen, dim=1)
+
+
+# Left/right arm joint pairs and the mirror sign (roll and yaw negate
+# across the sagittal plane; pitch and elbow do not) -- the same table
+# lpa_arm_symmetry_probe measures with.
+_ARM_MIRROR = (("L_SHOULDER_PITCH", "R_SHOULDER_PITCH", +1.0),
+               ("L_SHOULDER_ROLL", "R_SHOULDER_ROLL", -1.0),
+               ("L_SHOULDER_YAW", "R_SHOULDER_YAW", -1.0),
+               ("L_ELBOW", "R_ELBOW", +1.0))
+
+
+def arm_phase_mirror(env, shift_s: float = 0.745,
+                     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+                     ) -> torch.Tensor:
+    """tinh (am-m7l.14 follow-up): the two arms must be the SAME arm,
+    half a gait cycle apart.
+
+    Asa on the cladwalkclr render (2026-09-01): 'the right arm looks
+    good, but the left arm is very different from it. can we have a
+    term that penalizes differences from left to right, but only when
+    shifted by the counterswing phase?'
+
+    The walking reference is half-periodic: the library holds one
+    step, the full cycle is two, and the left arm's motion is the
+    right arm's mirrored and delayed by one step period. So the term
+    compares q_L(t) with S q_R(t - shift) and q_R(t) with S q_L(t -
+    shift), S the mirror sign per joint (roll, yaw negate), and pays
+    the mean squared difference over the four joint pairs, both
+    directions averaged. A plain (unshifted) mirror term would punish
+    the counterswing itself.
+
+    shift_s is the reference's step period: 0.745 s for the clad stomp
+    (FK off the library: SS 0.450 s + DS 0.295 s), 37 control steps at
+    50 Hz. The check that the shift is RIGHT is empirical and printed
+    once, the first step every env has a full buffer: mean shifted
+    error against mean unshifted error. For a counterswing the
+    unshifted error is large and the shifted one small; if they come
+    out alike, the shift is wrong or the arms are not counterswinging.
+
+    Per env a ring buffer holds the last shift+1 arm joint vectors;
+    the term is zero until the episode is older than the shift, so a
+    reset never pairs this episode's arm with the previous one's.
+    Called exactly once per step by the reward manager, which is what
+    advances the buffer.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    st = getattr(env, "_arm_phase_mirror_state", None)
+    if st is None:
+        names_l = [l for l, _r, _s in _ARM_MIRROR]
+        names_r = [r for _l, r, _s in _ARM_MIRROR]
+        il, _ = asset.find_joints(names_l, preserve_order=True)
+        ir, _ = asset.find_joints(names_r, preserve_order=True)
+        dev = asset.data.joint_pos.device
+        k = int(round(shift_s / env.step_dt))
+        if k < 1:
+            raise ValueError(f"shift_s {shift_s} is under one control step {env.step_dt}")
+        st = {
+            "il": torch.tensor(il, device=dev),
+            "ir": torch.tensor(ir, device=dev),
+            "sign": torch.tensor([s for _l, _r, s in _ARM_MIRROR], device=dev),
+            "k": k,
+            "buf": torch.zeros(env.num_envs, k + 1, 2, len(_ARM_MIRROR), device=dev),
+            "ptr": 0,
+            "printed": False,
+        }
+        env._arm_phase_mirror_state = st
+    q = asset.data.joint_pos
+    ql, qr = q[:, st["il"]], q[:, st["ir"]]                  # [E, 4] each
+    k, buf = st["k"], st["buf"]
+    ptr = st["ptr"]
+    buf[:, ptr, 0], buf[:, ptr, 1] = ql, qr
+    old = (ptr + 1) % (k + 1)                                 # t - k
+    ql_d, qr_d = buf[:, old, 0], buf[:, old, 1]
+    st["ptr"] = old
+    s = st["sign"][None, :]
+    e_l = ql - s * qr_d
+    e_r = qr - s * ql_d
+    err = 0.5 * (torch.mean(e_l * e_l, dim=1) + torch.mean(e_r * e_r, dim=1))
+    valid = env.episode_length_buf >= k
+    err = torch.where(valid, err, torch.zeros_like(err))
+    if not st["printed"] and bool(valid.all()):
+        st["printed"] = True
+        e0 = ql - s * qr
+        print(f"[arm_phase_mirror] shift {shift_s:.3f} s = {k} steps; first full-buffer step: "
+              f"mean shifted mirror error {err.mean().item():.4f} rad^2 vs "
+              f"unshifted {torch.mean(e0 * e0).item():.4f} rad^2 "
+              f"(counterswing => shifted << unshifted)", flush=True)
+    return err
