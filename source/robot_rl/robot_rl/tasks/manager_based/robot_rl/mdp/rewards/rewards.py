@@ -939,22 +939,51 @@ def arm_phase_mirror(env, shift_s: float = 0.745, unshifted_cap: float = 0.04,
     exactly once per step by the reward manager, which is what
     advances the buffer.
     """
+    return _phase_mirror(env, asset_cfg, "arm", _ARM_POINTS, shift_s, unshifted_cap)
+
+
+# Feet: ankle origins. The reference's ankle paths mirror at half cycle
+# to 0.3 cm rms and differ by 36.9 cm rms unshifted (ref_mirror_probe,
+# 2026-09-01); cladwalkclr/cladwalksym3 measured 18.6-20.2 cm rms at the
+# shift -- 'one step longer than the other' (Asa, am-m7l.19).
+_FOOT_POINTS = (("L_ANKLE", (0.0, 0.0, 0.0)),
+                ("R_ANKLE", (0.0, 0.0, 0.0)))
+
+
+def foot_phase_mirror(env, shift_s: float = 0.745, unshifted_cap: float = 0.10,
+                      asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+                      ) -> torch.Tensor:
+    """tinh (am-m7l.19): each foot's path is the other foot's, mirrored,
+    half a cycle later. Same construction as arm_phase_mirror on the
+    ankle origins (one point per side); cap 0.10 m^2, below the
+    reference's own unshifted 0.136, so alternating legs earn the cap
+    and a hop (both feet together) forfeits it."""
+    return _phase_mirror(env, asset_cfg, "foot", _FOOT_POINTS, shift_s, unshifted_cap)
+
+
+def _phase_mirror(env, asset_cfg, key: str, points, shift_s: float, unshifted_cap: float
+                  ) -> torch.Tensor:
+    """Shared body of arm_phase_mirror / foot_phase_mirror. `points` is
+    ((L_body, offset), (R_body, offset)); each side contributes the body
+    origin and, if the offset is non-zero, the offset point too."""
     asset: Articulation = env.scene[asset_cfg.name]
-    st = getattr(env, "_arm_phase_mirror_state", None)
+    attr = f"_{key}_phase_mirror_state"
+    st = getattr(env, attr, None)
     if st is None:
         names = list(asset.data.body_names)
         dev = asset.data.body_pos_w.device
         k = int(round(shift_s / env.step_dt))
         if k < 1:
             raise ValueError(f"shift_s {shift_s} is under one control step {env.step_dt}")
+        two = any(any(abs(c) > 0 for c in o) for _b, o in points)
         st = {
-            "ids": torch.tensor([names.index(b) for b, _o in _ARM_POINTS], device=dev),
-            "off": torch.tensor([o for _b, o in _ARM_POINTS], dtype=torch.float32, device=dev),
+            "ids": torch.tensor([names.index(b) for b, _o in points], device=dev),
+            "off": torch.tensor([o for _b, o in points], dtype=torch.float32, device=dev),
+            "two": two,
             "mirror": torch.tensor([1.0, -1.0, 1.0], device=dev),
             "k": k,
-            "buf": torch.zeros(env.num_envs, k + 1, 2, 2, 3, device=dev),  # side, point, xyz
+            "buf": torch.zeros(env.num_envs, k + 1, 2, 2 if two else 1, 3, device=dev),
             "ptr": 0,
-            "printed": False,
             # calls since this env's episode began, counted HERE: the
             # buffer is only as old as the calls that filled it, and
             # episode_length_buf can be older than that (a resumed run
@@ -962,16 +991,24 @@ def arm_phase_mirror(env, shift_s: float = 0.745, unshifted_cap: float = 0.04,
             # zero slots and printed 0.257 m^2 -- the arm points' |p|^2).
             "age": torch.zeros(env.num_envs, dtype=torch.long, device=dev),
             "last_ep": torch.full((env.num_envs,), -1, dtype=torch.long, device=dev),
+            # the one-time print is a CYCLE AVERAGE: a single-step snapshot
+            # after a synchronized reset samples one gait phase for every
+            # env (measured 0.0037 where the 600-step probe gave 0.031).
+            "acc": None, "acc_n": 0, "printed": False,
         }
-        env._arm_phase_mirror_state = st
+        setattr(env, attr, st)
     root_p = asset.data.root_pos_w                              # [E, 3]
     root_q = asset.data.root_quat_w                             # [E, 4]
-    bp = asset.data.body_pos_w[:, st["ids"]]                    # [E, 2, 3] elbow origins
-    bq = asset.data.body_quat_w[:, st["ids"]]                   # [E, 2, 4]
-    hand = bp + quat_apply(bq, st["off"].unsqueeze(0).expand(bp.shape[0], -1, -1))
-    pts_w = torch.stack([bp, hand], dim=2)                      # [E, side, point, 3]
+    bp = asset.data.body_pos_w[:, st["ids"]]                    # [E, 2, 3] body origins
+    if st["two"]:
+        bq = asset.data.body_quat_w[:, st["ids"]]               # [E, 2, 4]
+        tip = bp + quat_apply(bq, st["off"].unsqueeze(0).expand(bp.shape[0], -1, -1))
+        pts_w = torch.stack([bp, tip], dim=2)                   # [E, side, point, 3]
+    else:
+        pts_w = bp.unsqueeze(2)
+    npt = pts_w.shape[2]
     rel = pts_w - root_p[:, None, None, :]
-    rq = root_q[:, None, None, :].expand(-1, 2, 2, -1)
+    rq = root_q[:, None, None, :].expand(-1, 2, npt, -1)
     pts = quat_rotate_inverse(rq.reshape(-1, 4), rel.reshape(-1, 3)).reshape(pts_w.shape)
     k, buf, ptr = st["k"], st["buf"], st["ptr"]
     buf[:, ptr] = pts
@@ -979,7 +1016,7 @@ def arm_phase_mirror(env, shift_s: float = 0.745, unshifted_cap: float = 0.04,
     pts_d = buf[:, old]
     st["ptr"] = old
     m = st["mirror"]
-    e_l = pts[:, 0] - m * pts_d[:, 1]                           # L(t) vs M R(t-k)   [E, 2, 3]
+    e_l = pts[:, 0] - m * pts_d[:, 1]                           # L(t) vs M R(t-k)   [E, npt, 3]
     e_r = pts[:, 1] - m * pts_d[:, 0]
     shifted = 0.5 * (torch.sum(e_l * e_l, dim=-1).mean(dim=1) + torch.sum(e_r * e_r, dim=-1).mean(dim=1))
     e0 = pts[:, 0] - m * pts[:, 1]                              # L(t) vs M R(t): must NOT be small
@@ -994,13 +1031,18 @@ def arm_phase_mirror(env, shift_s: float = 0.745, unshifted_cap: float = 0.04,
     st["last_ep"] = ep.clone()
     valid = st["age"] >= 2 * k
     err = torch.where(valid, err, torch.zeros_like(err))
-    settled = st["age"] >= 3 * k
-    if not st["printed"] and int(settled.sum()) >= max(8, env.num_envs // 4):
-        st["printed"] = True
-        print(f"[arm_phase_mirror] shift {shift_s:.3f} s = {k} steps; over {int(settled.sum())} "
-              f"settled envs: mean shifted mirror error {shifted[settled].mean().item():.5f} m^2 "
-              f"(rms {shifted[settled].mean().sqrt().item()*100:.1f} cm) vs unshifted "
-              f"{unshifted[settled].mean().item():.5f} m^2 (rms {unshifted[settled].mean().sqrt().item()*100:.1f} cm); "
-              f"term = shifted - min(unshifted, {unshifted_cap}) = {err[settled].mean().item():.5f} "
-              f"(counterswing => shifted << unshifted; both small = in phase = degenerate)", flush=True)
+    if not st["printed"]:
+        settled = st["age"] >= 3 * k
+        if int(settled.sum()) >= max(8, env.num_envs // 4):
+            s = torch.stack([shifted[settled].mean(), unshifted[settled].mean(), err[settled].mean()])
+            st["acc"] = s if st["acc"] is None else st["acc"] + s
+            st["acc_n"] += 1
+            if st["acc_n"] >= 2 * k:                            # two shifts = one full cycle
+                a = (st["acc"] / st["acc_n"]).tolist()
+                st["printed"] = True
+                print(f"[{key}_phase_mirror] shift {shift_s:.3f} s = {k} steps; cycle average over "
+                      f"{st['acc_n']} steps of settled envs: shifted mirror error {a[0]:.5f} m^2 "
+                      f"(rms {a[0]**0.5*100:.1f} cm) vs unshifted {a[1]:.5f} m^2 (rms {a[1]**0.5*100:.1f} cm); "
+                      f"term = shifted - min(unshifted, {unshifted_cap}) = {a[2]:.5f} "
+                      f"(counterswing => shifted << unshifted; both small = in phase = degenerate)", flush=True)
     return err

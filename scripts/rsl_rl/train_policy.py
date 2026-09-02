@@ -12,6 +12,7 @@ import cli_args
 ENVIRONMENTS = {
     "lpa_walking_clf": "LPA-walking-clf",  # tinh
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh 8.5d
+    "lpa_walking_clf_cladwalkgait": "LPA-walking-clf-cladwalkgait",
     "lpa_walking_clf_cladwalksym": "LPA-walking-clf-cladwalksym",
     "lpa_walking_clf_cladwalkclr": "LPA-walking-clf-cladwalkclr",
     "lpa_walking_clf_cladwalkarm": "LPA-walking-clf-cladwalkarm",
@@ -68,6 +69,7 @@ ENVIRONMENTS = {
 EXPERIMENT_NAMES = {
     "lpa_walking_clf": "lpa_walking_clf",  # tinh
     "lpa_walking_clf_skill": "lpa_walking_clf",  # tinh 8.5d (shared exp dir)
+    "lpa_walking_clf_cladwalkgait": "lpa_walking_clf",  # + foot phase mirror
     "lpa_walking_clf_cladwalksym": "lpa_walking_clf",  # phase-shifted arm mirror
     "lpa_walking_clf_cladwalkclr": "lpa_walking_clf",  # arm-torso clearance term
     "lpa_walking_clf_cladwalkarm": "lpa_walking_clf",  # arm authority

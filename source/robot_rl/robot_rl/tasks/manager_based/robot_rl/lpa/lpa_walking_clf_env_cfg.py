@@ -2081,3 +2081,36 @@ class LpaWalkingCLFCladWalkSymEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
             func=mdp.arm_phase_mirror,
             weight=-40.0,
             params={"shift_s": 0.745, "unshifted_cap": 0.04})
+
+
+@configclass
+class LpaWalkingCLFCladWalkGaitEnvCfg(LpaWalkingCLFCladWalkSymEnvCfg):
+    """Each foot's path is the other foot's, mirrored, half a cycle later.
+
+    Asa on the cladwalksym3 / cladwalkclr renders (2026-09-01): 'stride
+    symmetry should be also something we try and encourage. I am
+    seeing one step longer than the other.'
+
+    MEASURED (arm-symmetry probe with feet, ankle origins in the base
+    frame, 600 steps): cladwalkclr feet mirror at the 0.745 s shift
+    0.0345 m^2 (18.6 cm rms) vs unshifted 0.142; cladwalksym3 0.0410
+    (20.2 cm) vs 0.149. The reference: 0.00001 (0.3 cm rms) vs 0.136.
+    The legs alternate like the reference; each foot's path differs
+    from the mirrored other foot by ~19-20 cm rms half a cycle apart,
+    where the reference has 0.3 cm. The fore-aft excursions are within
+    4%, so the length Asa sees is in the path and timing, not the reach.
+
+    THIS ENV: one new reward, mdp.foot_phase_mirror -- the same
+    construction as arm_phase_mirror on the ankle origins, with the
+    capped unshifted guard (cap 0.10, under the reference's own 0.136)
+    so a hop cannot satisfy it. Weight -40: at the measured 0.035 the
+    opening cost is -1.4/step against progress +9.66. Inherits
+    cladwalksym (arm term stays), obs unchanged -- one variable.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.foot_phase_mirror = RewTerm(
+            func=mdp.foot_phase_mirror,
+            weight=-40.0,
+            params={"shift_s": 0.745, "unshifted_cap": 0.10})
