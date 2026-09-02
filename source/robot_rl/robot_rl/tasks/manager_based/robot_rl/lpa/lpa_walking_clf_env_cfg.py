@@ -2142,3 +2142,38 @@ class LpaWalkingCLFCladWalkGait2EnvCfg(LpaWalkingCLFCladWalkGaitEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.foot_phase_mirror.weight = -100.0
+
+
+@configclass
+class LpaWalkingCLFCladWalkGaitArmEnvCfg(LpaWalkingCLFCladWalkGait2EnvCfg):
+    """Arm STYLE: the stomp sways around the waist; the policy punches.
+
+    Asa on the cladwalkgait3 render (2026-09-01 23:45): 'The arm
+    character is quite punch like vs the reference.'
+
+    MEASURED (arm-symmetry probe on cladwalkgait3 vs ref_mirror_probe
+    on the library): shoulder pitch range 1.20/1.29 rad vs the
+    reference's 0.26/0.30 (4.5x), elbow 1.73/1.81 vs 0.40 (4.4x),
+    shoulder yaw 0.95/0.62 vs 0.08, and shoulder roll 0.36/0.28 vs
+    0.60 (HALF). Fore-aft pitch and elbow are the punch; roll is the
+    sway the reference has and the policy lacks.
+
+    THIS ENV: one variable, the arms' reference-tracking authority --
+    arms_track_linear -0.5 -> -4.0, the 8x cladwalkarm tried on
+    2026-09-01 morning when every arm was fighting its own chest and
+    the term measured inert (73 resets vs 74, ranges unchanged). The
+    walk is clean now (clearance + foot symmetry, 1 reset, feet 0.006
+    m^2), so the term's gradient is no longer swamped by collision
+    avoidance. Inherits CladWalkGait2, obs unchanged, resumes
+    cladwalkgait3.
+
+    FAIL-with-information: ranges unchanged again -> joint-space
+    tracking cannot hold the style against the balance/progress
+    objectives at any weight; the next lever is a per-joint amplitude
+    envelope (price range beyond the reference's) or the dwell
+    (am-m7l.20), since the punch may be how the arms buy speed.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.arms_track_linear.weight = -4.0
