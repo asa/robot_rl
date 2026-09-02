@@ -108,6 +108,22 @@ if not _registered:
         },
     )
 
+    # The FROM-SCRATCH control on the clean stomp stack: the same env
+    # as cladwalkgait2 under the default PPO config (entropy 0.008),
+    # because a policy learning a gait from nothing needs the
+    # exploration the low-entropy resume config removes. Every clad
+    # policy to date descends from pendulum9b; this one answers
+    # whether the stack learns the stomp from its reference alone.
+    gym.register(
+        id="LPA-walking-clf-cladstomp0",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFCladWalkGait2EnvCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:PPORunnerCfg",
+        },
+    )
+
     gym.register(
         id="LPA-walking-clf-cladwalkclear",
         entry_point="isaaclab.envs:ManagerBasedRLEnv",
