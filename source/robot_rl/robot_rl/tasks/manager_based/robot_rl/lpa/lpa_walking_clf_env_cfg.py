@@ -2177,3 +2177,41 @@ class LpaWalkingCLFCladWalkGaitArmEnvCfg(LpaWalkingCLFCladWalkGait2EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.arms_track_linear.weight = -4.0
+
+
+@configclass
+class LpaWalkingCLFCladWalkGaitVelEnvCfg(LpaWalkingCLFCladWalkGait2EnvCfg):
+    """DWELL: the stomp holds after each footfall; the policy holds
+    after one of them.
+
+    Asa on the cladwalkgait3 render (2026-09-01 23:45): 'The stomp
+    walk of the reference is being lost. There should be a hold after
+    each footfall.'
+
+    MEASURED (arm-symmetry probe DWELL block on cladwalkgait3 vs
+    ref_mirror_probe on the library): double-support share 0.38
+    (reference 0.40) -- the DS time is there; base speed by phase from
+    the left touchdown 0.43 0.56 0.44 0.50 0.53 | 0.50 0.61 0.57 0.61
+    0.62 against the reference's per-step 0.67 0.64 0.63 0.51 0.42 --
+    a hold after the LEFT footfall and none after the RIGHT.
+
+    WHY: forward_progress (weight 10) pays linear speed capped at the
+    command, 0.515 m/s; the reference's hold runs at 0.42, so every
+    hold step costs progress. The only term that pays for the
+    reference's speed PROFILE by phase is base_lin_vel (the CLF
+    pelvis_lin_vel subgroup) at weight 1.0 -- a tenth of progress.
+
+    THIS ENV: one variable, base_lin_vel 1.0 -> 8.0. Inherits
+    CladWalkGait2, obs unchanged, resumes cladwalkgait3.
+
+    FAIL-with-information: profile unchanged -> the pelvis_lin_vel CLF
+    value is too flat inside the hold to carry it (sigma 0.3 against a
+    0.1 m/s dip); next is a phase-gated progress cap (pay the reference
+    speed at the phase, not the command). Profile matches but travel
+    drops below the command -> progress and the profile disagree on
+    the mean; re-time the reference's command to its own mean.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.base_lin_vel.weight = 8.0
