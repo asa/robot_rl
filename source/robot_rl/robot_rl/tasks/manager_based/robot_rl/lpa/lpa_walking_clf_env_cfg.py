@@ -2084,7 +2084,7 @@ class LpaWalkingCLFCladWalkSymEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
 
 
 @configclass
-class LpaWalkingCLFCladWalkGaitEnvCfg(LpaWalkingCLFCladWalkSymEnvCfg):
+class LpaWalkingCLFCladWalkGaitEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
     """Each foot's path is the other foot's, mirrored, half a cycle later.
 
     Asa on the cladwalksym3 / cladwalkclr renders (2026-09-01): 'stride
@@ -2105,7 +2105,11 @@ class LpaWalkingCLFCladWalkGaitEnvCfg(LpaWalkingCLFCladWalkSymEnvCfg):
     capped unshifted guard (cap 0.10, under the reference's own 0.136)
     so a hop cannot satisfy it. Weight -40: at the measured 0.035 the
     opening cost is -1.4/step against progress +9.66. Inherits
-    cladwalksym (arm term stays), obs unchanged -- one variable.
+    cladwalkCLR, not cladwalksym: the arm term's guarded form
+    (cladwalksym4) collected its cap by making the arms MORE different
+    at the same instant (unshifted 0.055 -> 0.063) without closing the
+    half-cycle gap (0.033 -> 0.040), so it is not in the baseline. One
+    variable against cladwalkclr: the foot term.
     """
 
     def __post_init__(self):
