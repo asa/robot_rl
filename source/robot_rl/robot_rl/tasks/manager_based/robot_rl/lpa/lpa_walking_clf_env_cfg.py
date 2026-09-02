@@ -2118,3 +2118,27 @@ class LpaWalkingCLFCladWalkGaitEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
             func=mdp.foot_phase_mirror,
             weight=-40.0,
             params={"shift_s": 0.745, "unshifted_cap": 0.10})
+
+
+@configclass
+class LpaWalkingCLFCladWalkGait2EnvCfg(LpaWalkingCLFCladWalkGaitEnvCfg):
+    """The foot term at 2.5x.
+
+    cladwalkgait (weight -40) measured feet mirror 0.021 -> 0.011 m^2
+    at the step shift, excursions 57.1/57.7 cm, gate 1 reset (the best
+    of the line), with the term sitting at its cap the whole run. The
+    reference is 0.00001. One variable: weight -40 -> -100. At 0.011
+    the opening cost is -1.1/step; a 5 cm residual still costs
+    -0.25/step, above the clearance term's scale, so the gradient does
+    not vanish where -40's did.
+
+    FAIL-with-information: feet under 0.005 but survival regresses ->
+    the residual asymmetry was compensating something (speed band or
+    the standing hold) and the weight is too high; feet unchanged ->
+    the term is not the binder any more, look at the reference speed
+    and the tracking terms.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rewards.foot_phase_mirror.weight = -100.0
