@@ -23,6 +23,7 @@ SIM_ENVIRONMENTS = {
     # camera (obs include the +5 skill channels the checkpoint
     # expects).
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh
+    "lpa_walking_clf_cladwalkgaitprog": "LPA-walking-clf-cladwalkgaitprog",  # progress at ref speed
     "lpa_walking_clf_cladstomp0": "LPA-walking-clf-cladstomp0",  # from-scratch stomp control
     "lpa_walking_clf_cladwalkgaitvel": "LPA-walking-clf-cladwalkgaitvel",  # base speed profile x8
     "lpa_walking_clf_cladwalkgaitarm": "LPA-walking-clf-cladwalkgaitarm",  # + arm tracking x8

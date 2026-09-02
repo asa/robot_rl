@@ -769,6 +769,63 @@ def forward_progress(env, command_name: str,
     return torch.clamp(v_x * torch.sign(cmd_x) / denom, -1.0, 1.0)
 
 
+def forward_progress_ref(env, command_name: str,
+                         ref_command_name: str = "traj_ref",
+                         upright_gate: bool = True,
+                         floor: float = 0.1,
+                         asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """tinh: forward_progress_heading with the cap at the REFERENCE's
+    forward speed at the phase, not at the command.
+
+        r = clamp( v_x * sign(cmd_x) / max(|v_ref(phase)|, floor), -1, 1 )
+
+    Type: (heading-frame forward speed, command sign, reference CORE
+    forward speed at the command's phase) -> [-1, 1]. Same linear,
+    signed, capped form as forward_progress_heading -- it integrates
+    to displacement, rocking scores zero, overspeed earns nothing --
+    but the speed that earns the full 1 is the reference's OWN speed
+    at this instant of the cycle.
+
+    WHY (am-m7l.20, 2026-09-02): the stomp holds after each footfall,
+    base speed 0.42 m/s in the hold against 0.67 in the stride. The
+    flat cap pays the command (0.515) everywhere, so every hold step
+    costs progress, and the policy learned a flattened profile with a
+    hold after ONE footfall; raising the CLF pelvis_lin_vel tracking
+    weight x8 (cladwalkgaitvel) flattened it further. Paying the
+    reference's speed by phase makes the hold worth as much as the
+    stride.
+
+    v_ref is dy_des["CORE:pos_x"] on the trajectory command: the CORE
+    velocity in the yaw-aligned stance-foot frame, already scaled by
+    the contact gate's clock rate. The stance foot is stationary, so
+    that is the world forward speed in the heading frame -- the same
+    frame v_x is measured in. floor guards a reference that stops
+    (stand entries) so the ratio never explodes; at command 0 the sign
+    factor zeroes the term exactly as the parent does.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    cmd = env.command_manager.get_command(command_name)
+    ref = env.command_manager.get_term(ref_command_name)
+    idx = getattr(ref, "_fpr_core_vx_idx", None)
+    if idx is None:
+        idx = ref.ordered_vel_output_names.index("CORE:pos_x")
+        ref._fpr_core_vx_idx = idx
+    v_ref = ref.dy_des[:, idx]
+
+    v_heading = quat_rotate_inverse(yaw_quat(asset.data.root_quat_w),
+                                    asset.data.root_lin_vel_w)
+    v_x = v_heading[:, 0]
+    cmd_x = cmd[:, 0]
+    denom = torch.clamp(torch.abs(v_ref), min=floor)
+    r = torch.clamp(v_x * torch.sign(cmd_x) / denom, -1.0, 1.0)
+    if upright_gate:
+        # projected gravity in the body frame is (0,0,-1) upright;
+        # past 60 deg of tilt its z component rises above -0.5.
+        r = torch.where(asset.data.projected_gravity_b[:, 2] < -0.5,
+                        r, torch.zeros_like(r))
+    return r
+
+
 def _arm_torso_rows(asset: Articulation, margin: float):
     """Tensors for the bank's arm/torso sphere rows: body ids and
     link-frame offsets of the two sphere sets [R,·], summed radii [R],

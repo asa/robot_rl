@@ -2215,3 +2215,40 @@ class LpaWalkingCLFCladWalkGaitVelEnvCfg(LpaWalkingCLFCladWalkGait2EnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.rewards.base_lin_vel.weight = 8.0
+
+
+@configclass
+class LpaWalkingCLFCladWalkGaitProgEnvCfg(LpaWalkingCLFCladWalkGait2EnvCfg):
+    """DWELL, second lever: pay progress at the REFERENCE's speed by
+    phase instead of at the command.
+
+    cladwalkgaitvel (base_lin_vel 1 -> 8) FAILED with information:
+    double-support share 0.38 -> 0.46, speed min/mean 0.39 -> 0.41,
+    and the one hold the policy had (after the left footfall) was
+    smeared away -- the CLF pelvis_lin_vel value is too flat inside a
+    0.1 m/s dip to shape it, while progress at 10 keeps paying the
+    flat command everywhere.
+
+    THIS ENV: one variable, the progress term's cap. forward_progress_
+    heading (cap at the command, 0.515 m/s) -> forward_progress_ref
+    (cap at dy_des CORE:pos_x, the reference's forward speed at the
+    phase: 0.67 in the stride, 0.42 in the hold). Same weight 10, same
+    heading frame, same upright gate. Inherits CladWalkGait2, obs
+    unchanged, resumes cladwalkgait3.
+
+    FAIL-with-information: profile still flat -> the hold is not a
+    reward-shape problem but a habit the resumed policy keeps; read the
+    from-scratch control (cladstomp1). Hold appears but travel falls
+    under 0.45 m/s -> the reference's mean (0.573) and the command
+    (0.515) disagree and xy_vel pulls to the command; re-time the
+    command to the reference's own mean.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        from isaaclab.managers import RewardTermCfg as _RewT
+        self.rewards.progress = _RewT(
+            func=mdp.forward_progress_ref, weight=10.0,
+            params={"command_name": "base_velocity",
+                    "ref_command_name": "traj_ref",
+                    "upright_gate": True})
