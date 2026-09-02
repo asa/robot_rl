@@ -880,7 +880,7 @@ _ARM_POINTS = (("L_ELBOW", (0.0, 0.018, -0.43)),
                ("R_ELBOW", (0.0, -0.015, -0.43)))
 
 
-def arm_phase_mirror(env, shift_s: float = 0.745,
+def arm_phase_mirror(env, shift_s: float = 0.745, unshifted_cap: float = 0.04,
                      asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
                      ) -> torch.Tensor:
     """tinh (am-m7l.18): the two arms must be the SAME arm, half a gait
@@ -909,9 +909,23 @@ def arm_phase_mirror(env, shift_s: float = 0.745,
     body origin and the hand sphere centre (bank offsets, in the
     elbow frame). With M = diag(1, -1, 1) the sagittal mirror:
         e_L(t) = p_L(t) - M p_R(t - shift),  e_R(t) = p_R(t) - M p_L(t - shift)
-    mean squared distance over the two points and both directions,
-    in m^2. A 10 cm asymmetry costs 0.01; weight it in the hundreds.
-    A plain (unshifted) mirror would punish the counterswing itself.
+    shifted = mean squared distance over the two points and both
+    directions, in m^2.
+
+    THE DEGENERATE SOLUTION, AND WHY THE SECOND HALF EXISTS. "Left
+    equals mirrored right one step earlier" is ALSO satisfied by both
+    arms swinging together at twice the gait frequency: one full arm
+    cycle per step makes a one-step delay a whole period. cladwalksym3
+    (2026-09-01) found exactly that -- its training shift check read
+    6 cm and Asa saw both arms exactly in sync. So the term is
+        err = shifted - min(unshifted, unshifted_cap)
+    where unshifted = the same mirror error with no delay. A true
+    counterswing has shifted ~0 and unshifted large (the reference:
+    0.05-0.06 m^2 on these points, 284 mm mean |dx| on the hands);
+    the in-phase solution has both ~0 and forfeits the cap. With the
+    cap at 0.04 m^2 the counterswing is worth 0.04 x weight per step
+    over the degenerate one, and nothing beyond the reference's own
+    asymmetry is rewarded.
 
     shift_s is the step period: 0.745 s for the clad stomp (library
     cycle 1.489 s, half-periodic), 37 control steps at 50 Hz. The
@@ -967,7 +981,10 @@ def arm_phase_mirror(env, shift_s: float = 0.745,
     m = st["mirror"]
     e_l = pts[:, 0] - m * pts_d[:, 1]                           # L(t) vs M R(t-k)   [E, 2, 3]
     e_r = pts[:, 1] - m * pts_d[:, 0]
-    err = 0.5 * (torch.sum(e_l * e_l, dim=-1).mean(dim=1) + torch.sum(e_r * e_r, dim=-1).mean(dim=1))
+    shifted = 0.5 * (torch.sum(e_l * e_l, dim=-1).mean(dim=1) + torch.sum(e_r * e_r, dim=-1).mean(dim=1))
+    e0 = pts[:, 0] - m * pts[:, 1]                              # L(t) vs M R(t): must NOT be small
+    unshifted = torch.sum(e0 * e0, dim=-1).mean(dim=1)
+    err = shifted - torch.clamp(unshifted, max=unshifted_cap)
     # Valid only once THIS buffer has seen two shifts of the current
     # episode: one shift back is the reset transient, and the buffer's
     # age is counted by calls, not by episode_length_buf (see "age").
@@ -980,11 +997,10 @@ def arm_phase_mirror(env, shift_s: float = 0.745,
     settled = st["age"] >= 3 * k
     if not st["printed"] and int(settled.sum()) >= max(8, env.num_envs // 4):
         st["printed"] = True
-        e0 = pts[:, 0] - m * pts[:, 1]
-        e0 = torch.sum(e0 * e0, dim=-1).mean(dim=1)
         print(f"[arm_phase_mirror] shift {shift_s:.3f} s = {k} steps; over {int(settled.sum())} "
-              f"settled envs: mean shifted mirror error {err[settled].mean().item():.5f} m^2 "
-              f"(rms {err[settled].mean().sqrt().item()*100:.1f} cm) vs unshifted "
-              f"{e0[settled].mean().item():.5f} m^2 (rms {e0[settled].mean().sqrt().item()*100:.1f} cm) "
-              f"(counterswing => shifted << unshifted; the reference is ~1:250)", flush=True)
+              f"settled envs: mean shifted mirror error {shifted[settled].mean().item():.5f} m^2 "
+              f"(rms {shifted[settled].mean().sqrt().item()*100:.1f} cm) vs unshifted "
+              f"{unshifted[settled].mean().item():.5f} m^2 (rms {unshifted[settled].mean().sqrt().item()*100:.1f} cm); "
+              f"term = shifted - min(unshifted, {unshifted_cap}) = {err[settled].mean().item():.5f} "
+              f"(counterswing => shifted << unshifted; both small = in phase = degenerate)", flush=True)
     return err

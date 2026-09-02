@@ -2073,7 +2073,11 @@ class LpaWalkingCLFCladWalkSymEnvCfg(LpaWalkingCLFCladWalkClrEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        # unshifted_cap: cladwalksym3 satisfied the shifted mirror by
+        # swinging both arms together at twice the gait frequency (Asa:
+        # 'exactly in sync'); the capped unshifted term forfeits 0.04 m^2
+        # x 40 = 1.6/step for that and pays it back for a counterswing.
         self.rewards.arm_phase_mirror = RewTerm(
             func=mdp.arm_phase_mirror,
             weight=-40.0,
-            params={"shift_s": 0.745})
+            params={"shift_s": 0.745, "unshifted_cap": 0.04})
