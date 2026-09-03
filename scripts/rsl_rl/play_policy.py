@@ -547,9 +547,14 @@ def main():
     obs = env.get_observations()
     action = policy(obs)
 
-    # Export information to a yaml
-    from export_parameters import export_policy_parameters
-    export_policy_parameters(env, obs, action, play_log_dir)
+    # Export the sim2sim contract (num_obs, dt, the COMMAND ENVELOPE)
+    # only when exporting the policy: a render pinned with --sim_speed
+    # would otherwise overwrite the envelope with its one command
+    # (2026-09-03: a heading render left progyaw with vx [0.5,0.5],
+    # wz [0.25,0.25] and lpa_drive clamped every command to it).
+    if args_cli.export_policy:
+        from export_parameters import export_policy_parameters
+        export_policy_parameters(env, obs, action, play_log_dir)
 
     timestep = 0
     print("[DEBUG] Starting simulation loop")
