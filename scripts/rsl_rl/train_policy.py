@@ -12,6 +12,7 @@ import cli_args
 ENVIRONMENTS = {
     "lpa_walking_clf": "LPA-walking-clf",  # tinh
     "lpa_walking_clf_skill": "LPA-walking-clf-skill",  # tinh 8.5d
+    "lpa_walking_clf_cladwalkgaitprogyaw": "LPA-walking-clf-cladwalkgaitprogyaw",
     "lpa_walking_clf_cladwalkgaitprog": "LPA-walking-clf-cladwalkgaitprog",
     "lpa_walking_clf_cladstomp0": "LPA-walking-clf-cladstomp0",
     "lpa_walking_clf_cladwalkgaitvel": "LPA-walking-clf-cladwalkgaitvel",
@@ -74,6 +75,7 @@ ENVIRONMENTS = {
 EXPERIMENT_NAMES = {
     "lpa_walking_clf": "lpa_walking_clf",  # tinh
     "lpa_walking_clf_skill": "lpa_walking_clf",  # tinh 8.5d (shared exp dir)
+    "lpa_walking_clf_cladwalkgaitprogyaw": "lpa_walking_clf",  # rung 1: yaw commands back
     "lpa_walking_clf_cladwalkgaitprog": "lpa_walking_clf",  # progress paid at the reference speed by phase
     "lpa_walking_clf_cladstomp0": "lpa_walking_clf",  # from-scratch stomp control, default PPO
     "lpa_walking_clf_cladwalkgaitvel": "lpa_walking_clf",  # base speed profile tracking x8 (the dwell)

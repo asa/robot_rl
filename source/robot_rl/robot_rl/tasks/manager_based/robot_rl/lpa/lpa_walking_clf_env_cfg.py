@@ -2252,3 +2252,34 @@ class LpaWalkingCLFCladWalkGaitProgEnvCfg(LpaWalkingCLFCladWalkGait2EnvCfg):
             params={"command_name": "base_velocity",
                     "ref_command_name": "traj_ref",
                     "upright_gate": True})
+
+
+@configclass
+class LpaWalkingCLFCladWalkGaitProgYawEnvCfg(LpaWalkingCLFCladWalkGaitProgEnvCfg):
+    """Rung 1 (am-m7l.1): yaw commands back, on a policy that walks.
+
+    cladwalk narrowed ang_vel_z to (-0.03, 0.03) so no command could
+    summon a pivot; that coupling is gone (the turn trajectories carry
+    mixable: false, am-kax), so a yaw command now steers the STOMP,
+    which is what a heading command should mean. ONE change: the yaw
+    band widens back to the base env's (-0.29, 0.29). The heading
+    controller's output is clipped to the same range, so the
+    closed-loop envs (55% + 25%) get real headings to hold too.
+    yaw_vel (track_ang_vel_z_exp, weight 1.0) is already on the
+    stack; nothing else moves. Resumes cladwalkgaitprog3 model_126398,
+    the first policy trained and measured under the declared action
+    bound (am-9j7.1).
+
+    FAIL-with-information: the walk holds but yaw tracking stays
+    flat -> the stomp cannot turn at 0.29 rad/s without a turn
+    reference; narrow to the band the policy tracks and hand the rest
+    to rung 3's traversals. Yaw tracks but the feet mirror breaks ->
+    the heading is being bought with an asymmetric stride; the foot
+    phase mirror is already at -100, so price yaw through stride
+    length instead.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.29, 0.29)
+
