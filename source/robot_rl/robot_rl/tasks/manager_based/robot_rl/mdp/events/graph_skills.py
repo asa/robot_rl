@@ -170,6 +170,115 @@ def graph_turn_sampler(env, env_ids, command_name: str,
             vel.is_standing_env[ids] = False
 
 
+_HOLDING = 4
+
+
+def graph_stop_sampler(env, env_ids, command_name: str,
+                       loco_entry_time: float = 0.45):
+    """Rung 2 (am-m7l.2): a COMMANDED stop and start, as a graph
+    traversal driven by the velocity command instead of a turn draw.
+
+    walk --(standing command)--> walk_to_stand spliced at the nearest
+    dwell (handedness-matched) --> saturated = a held STAND, tracked
+    closed-loop by the policy as the turn sequence already does at its
+    stand --(command rises)--> stand_to_walk --> locomotion.
+
+    WHY NOT the phase hold: a standing env commands (0,0,0), which is
+    below hold_phi_threshold and freezes the periodic reference
+    mid-cycle -- the pose held with the arms wherever the cycle left
+    them (clad3's render). A commanded stop should land in walk_to_stand
+    and hold a stand, not freeze the walk; the env that uses this
+    sampler sets hold_phi_threshold 0 so the freeze never fires and
+    the traversal owns the stop.
+
+    The standing draw IS the stop command: VelocityTrackingCommand
+    marks rel_standing_envs of resamples as is_standing_env and zeroes
+    their command until the next resample (7-10 s), which is the hold
+    length training sees; a resample that draws walking again is the
+    start command.
+
+    While an env runs the sequence its velocity command is pinned to
+    the skill's own rate (stop: forward taper 0.2; hold: 0; start:
+    0.45) and the closed-loop heading controller is disabled, as the
+    turn sampler does. The hold does NOT freeze resampling, so the
+    start command can arrive.
+    """
+    cmd = env.command_manager.get_term(command_name)
+    vel = env.command_manager.get_term("base_velocity")
+    lib = cmd.manager
+    stopL = lib.ref_id_of("walk_to_stand")
+    stopR = lib.ref_id_of("walk_to_stand_R")
+    s2w = lib.ref_id_of("stand_to_walk")
+    if not hasattr(cmd, "_graph_state"):
+        cmd._graph_state = torch.zeros(env.num_envs, dtype=torch.long,
+                                       device=env.device)
+    st = cmd._graph_state
+    st[env.episode_length_buf == 0] = _FREE
+    phi = cmd.get_phasing_var()
+    uphi = cmd.unmasked_phasing_var
+    no_pending = cmd.pending_ref_id <= cmd._NO_PENDING
+    epi = cmd._active_episodic_mask()
+    sat = epi & (phi >= 1.0 - 1e-6)
+    standing = vel.is_standing_env
+    # 1) walking envs that were commanded to stand: stop at the
+    #    nearest dwell in phase-future (the certified splice).
+    walking = ((cmd.active_ref_id < 0) & (st == _FREE) & no_pending
+               & (cmd.hold_phi_value < 0))
+    go_stop = walking & standing
+    if go_stop.any():
+        ids = torch.nonzero(go_stop).flatten()
+        u = uphi[ids]
+        dl = torch.where(u <= _DWELL_L, _DWELL_L - u, 1.0 - u + _DWELL_L)
+        dr = torch.where(u <= _DWELL_R, _DWELL_R - u, 1.0 - u + _DWELL_R)
+        use_l = dl <= dr
+        for mask, ref, ph in ((use_l, stopL, _DWELL_L),
+                              (~use_l, stopR, _DWELL_R)):
+            sub = ids[mask]
+            if len(sub):
+                cmd.set_next_ref(sub, ref, exit_phase=ph)
+        st[ids] = _STOPPING
+    # 2) stop saturated -> HOLD the stand (the episodic holds its last
+    #    pose at phi = 1; the policy tracks it).
+    stopped = (sat & ((cmd.active_ref_id == stopL)
+                      | (cmd.active_ref_id == stopR))
+               & (st == _STOPPING) & no_pending)
+    if stopped.any():
+        st[torch.nonzero(stopped).flatten()] = _HOLDING
+    # 3) held envs whose command came back -> stand_to_walk from the
+    #    stand (a saturated source hands off at once).
+    go_start = (st == _HOLDING) & (~standing) & no_pending
+    if go_start.any():
+        ids = torch.nonzero(go_start).flatten()
+        cmd.set_next_ref(ids, s2w)
+        st[ids] = _STARTING
+    # 4) start saturated -> locomotion at the touchdown phase.
+    started = (sat & (cmd.active_ref_id == s2w) & (st == _STARTING)
+               & no_pending)
+    if started.any():
+        ids = torch.nonzero(started).flatten()
+        cmd.set_next_ref(ids, -1, entry_time=loco_entry_time)
+        vel.time_left[ids] = 2.0
+        st[ids] = _FREE
+    # 5) pin the velocity command to the active skill; the HOLD keeps
+    #    resampling so the start command can arrive.
+    seq = st != _FREE
+    if seq.any():
+        ids = torch.nonzero(seq).flatten()
+        tgt = torch.zeros(len(ids), 3, device=env.device)
+        a = cmd.active_ref_id[ids]
+        tgt[(a == stopL) | (a == stopR), 0] = 0.2
+        tgt[a == s2w, 0] = 0.45
+        vel.vel_target_b[ids] = tgt
+        moving = st[ids] != _HOLDING
+        vel.time_left[ids[moving]] = 100.0
+        vel.is_closed_loop_yaw_env[ids] = False
+        vel.is_closed_loop_env[ids] = False
+        # a stopping/starting env is not a "standing" env for the
+        # velocity term (its command is the taper, not zero); a held
+        # env stays standing so its command is exactly zero
+        vel.is_standing_env[ids[moving]] = False
+
+
 def graph_nan_tripwire(env, env_ids, command_name: str):
     """Forensic guard (graphturn1 crashed on a sudden NaN at iter
     ~101.2k with healthy rewards — a rare discrete event): every

@@ -2283,3 +2283,39 @@ class LpaWalkingCLFCladWalkGaitProgYawEnvCfg(LpaWalkingCLFCladWalkGaitProgEnvCfg
         super().__post_init__()
         self.commands.base_velocity.ranges.ang_vel_z = (-0.29, 0.29)
 
+
+@configclass
+class LpaWalkingCLFCladWalkGaitProgYawStopEnvCfg(LpaWalkingCLFCladWalkGaitProgYawEnvCfg):
+    """Rung 2 (am-m7l.2): a commanded stop and start, by traversal.
+
+    On the yaw policy (rung 1). Three changes, one mechanism:
+      rel_standing_envs 0 -> 0.15 (from closed_loop 0.55 -> 0.40; the
+        four must sum to 1) so a stop is ever commanded;
+      hold_phi_threshold 0.1 -> 0.0 so a zero command never freezes the
+        periodic reference mid-cycle (the held mid-stomp pose in
+        clad3's render);
+      events.graph_skills -> graph_stop_sampler: standing command ->
+        walk_to_stand at the nearest dwell -> held stand (tracked
+        closed-loop, as the turn sequence's stand) -> stand_to_walk on
+        the next walking command -> locomotion.
+    The stop/start references are clad_graph2's certified pair
+    (seams 0.08 rad / 0.35 rad/s). Nothing else moves; the gate adds
+    the 0.0 command back because the stop is now a trained skill.
+
+    FAIL-with-information: resets at the stop splice -> the splice
+    phase (dwell 0.397/0.897) does not match the yaw policy's cycle;
+    measure its dwell phase and retune. Falls in the hold -> the
+    saturated stand is tracked poorly; the stand needs its own
+    reward mass (a stand_posture term while held). Falls at the start
+    -> stand_to_walk's touchdown entry (0.45 s) is off for this
+    cadence; sweep loco_entry_time.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.base_velocity.rel_standing_envs = 0.15
+        self.commands.base_velocity.rel_closed_loop = 0.40
+        self.commands.traj_ref.hold_phi_threshold = 0.0
+        self.events.graph_skills.func = mdp.graph_stop_sampler
+        self.events.graph_skills.params = {"command_name": "traj_ref"}
+
