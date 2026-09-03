@@ -319,9 +319,20 @@ def main():
         # envs go non-finite, then clamp so training survives.
         # ALL LPA envs (not an env-name allowlist — gating these to one
         # env is exactly why the ramp env rediscovered the same
-        # std-collapse crash). No-ops in healthy training: actions
-        # run 1-4 vs a +-10 clamp, rewards 0.3-3 vs +-1e3.
+        # std-collapse crash). The obs/reward guards are no-ops in
+        # healthy training (rewards 0.3-3 vs +-1e3). The +-10 action
+        # clamp that used to live here was NOT a no-op -- the elbow
+        # command saturated it -- and is now declared in the runner
+        # cfg at a value that never binds.
         if args_cli.env_type.startswith("lpa_"):
+            if agent_cfg.clip_actions is None:
+                raise SystemExit(
+                    "LPA env with clip_actions unset: the action bound "
+                    "must be declared in the runner cfg "
+                    "(LpaPPORunnerCfg.clip_actions) so play, probes "
+                    "and export execute the same actions as training "
+                    "(am-9j7.1). Register the task with an LPA runner "
+                    "cfg, not the G1 one.")
             _orig_step = env.step
 
             def _leaves(o):
@@ -340,7 +351,11 @@ def main():
                 # generous and breaks the loop. Executed-vs-stored
                 # mismatch is the standard rsl-rl clip_actions
                 # semantics.
-                actions = actions.clamp(-10.0, 10.0)
+                # The action bound now lives in the runner cfg
+                # (LpaPPORunnerCfg.clip_actions) and is applied by the
+                # RslRlVecEnvWrapper above, in play and export alike;
+                # a script-local clamp here was a second, undeclared
+                # task that bound on the elbow (am-9j7.1, 2026-09-03).
                 obs, rew, dones, extras = _orig_step(actions)
                 dirty = False
                 for key, v in _leaves(obs):
@@ -417,8 +432,11 @@ def main():
             # minibatches).
             # ALL LPA envs (not an env-name allowlist — gating these to one
         # env is exactly why the ramp env rediscovered the same
-        # std-collapse crash). No-ops in healthy training: actions
-        # run 1-4 vs a +-10 clamp, rewards 0.3-3 vs +-1e3.
+        # std-collapse crash). The obs/reward guards are no-ops in
+        # healthy training (rewards 0.3-3 vs +-1e3). The +-10 action
+        # clamp that used to live here was NOT a no-op -- the elbow
+        # command saturated it -- and is now declared in the runner
+        # cfg at a value that never binds.
         if args_cli.env_type.startswith("lpa_"):
                 _pol = runner.alg.policy
                 if hasattr(_pol, "std") and torch.is_tensor(

@@ -14,7 +14,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFEnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -24,7 +24,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFSkillEnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -34,7 +34,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFGraph1EnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -120,7 +120,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFCladWalkGait2EnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -173,7 +173,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFCladWalk2EnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -183,7 +183,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFCladWalkEnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -193,7 +193,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFClad4EnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -203,7 +203,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFClad3EnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -213,7 +213,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFClad2EnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -223,7 +223,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFClad1EnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -233,7 +233,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFGraphTurnEnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -243,7 +243,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFRampEnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -253,7 +253,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFEnvCfg_PLAY",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -375,7 +375,7 @@ if not _registered:
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFRoughEnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -385,7 +385,7 @@ gym.register(
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFHistEnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )
 
@@ -395,6 +395,6 @@ gym.register(
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.lpa_walking_clf_env_cfg:LpaWalkingCLFHistClear4EnvCfg",
-            "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_cfg_entry_point": f"{__name__}.agents.rsl_rl_ppo_cfg:LpaPPORunnerCfg",
         },
     )

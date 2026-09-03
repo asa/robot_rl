@@ -7,9 +7,67 @@ from isaaclab.utils import configclass
 
 from ...g1.agents.rsl_rl_ppo_cfg import PPORunnerCfg
 
+# The ONE action bound for every LPA policy, declared in the runner
+# cfg so the rsl_rl wrapper applies it identically in train_policy,
+# play_policy, play.py and the exported graph, and every probe reads
+# it from params/agent.yaml.
+#
+# It is a RUNAWAY GUARD, not a task element: healthy actions run
+# 1-4 (normalized units; the elbow scale is 0.081 rad/unit), the
+# gt13 runaway went to 1e12 through the last-action observation loop,
+# and 100 stops that while never binding on a healthy policy. The
+# previous script-local value of 10 DID bind (the elbow command sat
+# on it 70% of the time), which disconnected the elbow's gradient
+# from its outcomes and silenced the elbow band -- see
+# LpaPPORunnerCfg. If a policy ever saturates this bound, that is a
+# finding about the policy, not a reason to tighten the bound.
+LPA_CLIP_ACTIONS = 100.0
+
 
 @configclass
-class PPORunnerCfgH48(PPORunnerCfg):
+class LpaPPORunnerCfg(PPORunnerCfg):
+    """The G1 runner cfg with the LPA action bound declared.
+
+    WHY (am-9j7.1, 2026-09-03). train_policy.py clamped actions to
+    +/-10 at the env boundary for every lpa_ env from 2026-08-12 (a
+    NaN guard whose comment assumed healthy actions run 1-4 and the
+    clamp never binds). Nothing else clamped: play_policy, play.py,
+    the lpa_sim probes and the exported policy all executed the raw
+    network output. The clamp BOUND on the elbow: with an action scale
+    of 0.081 rad/unit it capped the trained elbow near -0.96 rad, and
+    the policy learned to saturate the command (cladwalkgaitprog2:
+    elbow actions -13 mean, -25 min, 70% beyond the clamp) because
+    past the clamp nothing it did changed anything. Deployed
+    unclamped, the same policy folded the elbows to -1.24 mean / -2.1
+    extremes -- every "arm punch" video and arm-style number between
+    2026-08-12 and 2026-09-03 was the deployed policy, not the trained
+    one, and the 2026-08-28 diagnosis (PPORunnerCfgH48LowEnt below,
+    "mean action vs sampled action at a hard stop") was this same
+    mismatch misread.
+
+    THE RULE: the executed action path is part of the task. Any bound,
+    clip or transform applied to actions in training is declared HERE
+    so every consumer inherits it; a script-local clamp is a second,
+    undeclared task. tools/rlrun preflight refuses an LPA registration
+    whose runner cfg leaves clip_actions unset.
+
+    THE VALUE: 100, a bound that never binds. The elbow band
+    (elbow_depth), the deviation caps and the clearance terms are the
+    things that shape the elbow; under the old clamp they could not
+    fire. A checkpoint trained under 10 that resumes here will see
+    those terms fire hard on its first rollouts (prog2: elbow_depth
+    -2.9/step unclamped) -- that is the reward doing the job the
+    clamp had been hiding, and the first such resume is the
+    measurement of whether it can.
+
+    Checkpoint-compatible: the runner cfg does not touch the network.
+    """
+    clip_actions = LPA_CLIP_ACTIONS
+
+
+
+@configclass
+class PPORunnerCfgH48(LpaPPORunnerCfg):
     """Double the on-policy rollout: 24 -> 48 steps.
 
     gamma*lam = 0.99*0.95 = 0.9405, so credit decays with an 11.3-step
@@ -67,6 +125,14 @@ class PPORunnerCfgH48LowEnt(PPORunnerCfgH48):
     The std itself is a LEARNED parameter restored from the resumed
     checkpoint (2.56), so this run starts wide and must earn its way
     down — that decay is the first gate.
+
+    CORRECTION (2026-09-03, am-9j7.1): the gap this docstring
+    explains was NOT mean-vs-sampled. train_policy clamped actions to
+    +/-10 and play did not; the elbow command saturated the clamp, so
+    training held the elbow near -0.96 while every unclamped rollout
+    folded it. Measured on cladwalkgaitprog2 at noise std 0.68: mean
+    and sampled rollouts agree to 0.01 rad; clamped vs unclamped
+    differ by 0.5 rad. See LpaPPORunnerCfg.
     """
 
     def __post_init__(self):
@@ -76,7 +142,7 @@ class PPORunnerCfgH48LowEnt(PPORunnerCfgH48):
 
 
 @configclass
-class PPORunnerCfgLowEnt(PPORunnerCfg):
+class PPORunnerCfgLowEnt(LpaPPORunnerCfg):
     """The entropy cut ALONE: 0.008 -> 0.001, rollout left at 24.
 
     H48LowEnt bundles this with num_steps_per_env 24 -> 48. Both may

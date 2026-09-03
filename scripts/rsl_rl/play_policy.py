@@ -457,13 +457,35 @@ def main():
         else:
             normalizer = None
 
+        # The exported graph must execute the SAME actions training
+        # did: the runner cfg's clip_actions (LpaPPORunnerCfg, am-9j7.1).
+        # Both exporters deep-copy policy.actor, so a clamp appended to
+        # the actor rides into the .pt and the .onnx; restored after.
+        _clip = getattr(agent_cfg, "clip_actions", None)
+        _orig_actor = policy_nn.actor
+        if _clip is not None:
+            class _ClampActions(torch.nn.Module):
+                def __init__(self, limit: float):
+                    super().__init__()
+                    self.limit = float(limit)
+                def forward(self, x):
+                    return torch.clamp(x, -self.limit, self.limit)
+            policy_nn.actor = torch.nn.Sequential(_orig_actor, _ClampActions(_clip))
+            print(f"[INFO] Exported policy clamps actions to +/-{_clip} (runner cfg clip_actions)")
+        elif args_cli.env_type.startswith("lpa_"):
+            raise SystemExit("LPA export with clip_actions unset -- see LpaPPORunnerCfg (am-9j7.1)")
         # export policy to onnx/jit
         export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
         os.makedirs(export_model_dir, exist_ok=True)
-        export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
-        export_policy_as_onnx(
-            policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx"
-        )
+        try:
+            export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
+            export_policy_as_onnx(
+                policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx"
+            )
+        finally:
+            policy_nn.actor = _orig_actor
+        with open(os.path.join(export_model_dir, "action_clip.txt"), "w") as _fh:
+            _fh.write(f"{_clip}\n")
         print(f"[DEBUG] Policy exported to {export_model_dir}")
 
     dt = env.unwrapped.step_dt
