@@ -477,10 +477,31 @@ def main():
             # child must stay the first Linear (rsl_rl's MLP is an
             # nn.Sequential; a nested wrapper broke the export on
             # cladwalkgaitprog3's close-out, 2026-09-03).
+            # BY INDEX, never children(): rsl_rl's MLP appends ONE
+            # activation instance after every hidden layer, and
+            # Module.children() de-duplicates by identity, so the
+            # flattened actor lost two of its three ELUs and exported a
+            # network that saturated every joint (progyaw and prog3,
+            # 2026-09-03; caught in lpa_drive, not by anything here).
             if isinstance(_orig_actor, torch.nn.Sequential):
-                policy_nn.actor = torch.nn.Sequential(*list(_orig_actor.children()), _ClampActions(_clip))
+                _layers = [_orig_actor[i] for i in range(len(_orig_actor))]
+                policy_nn.actor = torch.nn.Sequential(*_layers, _ClampActions(_clip))
             else:
                 policy_nn.actor = torch.nn.Sequential(_orig_actor, _ClampActions(_clip))
+            # PARITY, asserted: the exported module must compute what the
+            # trained actor computes, up to the clamp, on inputs of the
+            # trained scale. An export that fails this ships nothing.
+            _dev = next(_orig_actor.parameters()).device
+            _in = _orig_actor[0].in_features if isinstance(_orig_actor, torch.nn.Sequential) else None
+            if _in is not None:
+                with torch.no_grad():
+                    _x = torch.randn(64, _in, device=_dev) * 2.0
+                    _want = torch.clamp(_orig_actor(_x), -_clip, _clip)
+                    _err = float((_want - policy_nn.actor(_x)).abs().max())
+                if _err > 1e-4:
+                    policy_nn.actor = _orig_actor
+                    raise SystemExit(f"export parity FAILED: the wrapped actor differs from the trained actor by {_err:.3g}")
+                print(f"[INFO] export parity: wrapped actor == trained actor (max err {_err:.2e})")
             print(f"[INFO] Exported policy clamps actions to +/-{_clip} (runner cfg clip_actions)")
         elif args_cli.env_type.startswith("lpa_"):
             raise SystemExit("LPA export with clip_actions unset -- see LpaPPORunnerCfg (am-9j7.1)")
