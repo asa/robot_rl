@@ -470,7 +470,15 @@ def main():
                     self.limit = float(limit)
                 def forward(self, x):
                     return torch.clamp(x, -self.limit, self.limit)
-            policy_nn.actor = torch.nn.Sequential(_orig_actor, _ClampActions(_clip))
+            # Flatten rather than nest: isaaclab's ONNX exporter reads
+            # actor[0].in_features for its dummy input, so the first
+            # child must stay the first Linear (rsl_rl's MLP is an
+            # nn.Sequential; a nested wrapper broke the export on
+            # cladwalkgaitprog3's close-out, 2026-09-03).
+            if isinstance(_orig_actor, torch.nn.Sequential):
+                policy_nn.actor = torch.nn.Sequential(*list(_orig_actor.children()), _ClampActions(_clip))
+            else:
+                policy_nn.actor = torch.nn.Sequential(_orig_actor, _ClampActions(_clip))
             print(f"[INFO] Exported policy clamps actions to +/-{_clip} (runner cfg clip_actions)")
         elif args_cli.env_type.startswith("lpa_"):
             raise SystemExit("LPA export with clip_actions unset -- see LpaPPORunnerCfg (am-9j7.1)")
